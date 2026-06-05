@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import Tesseract from 'tesseract.js';
 import { 
   Compass, 
   Database, 
@@ -17,10 +18,12 @@ import {
   Cpu,
   FileCheck2,
   Trash2,
+  Pencil,
   Lock,
   Mail,
   User,
   LogOut,
+  FolderOpen,
   Calendar,
   Layers,
   ChevronRight,
@@ -47,7 +50,9 @@ import {
   Check,
   Star,
   Zap,
-  Home
+  Home,
+  Camera,
+  Upload
 } from 'lucide-react';
 
 import { Transaction, ReceiptScanResult, AllocationType } from '@/types/financial';
@@ -56,6 +61,196 @@ import { simulateMultiAgentPipeline } from '@/lib/aiOrchestrator';
 import DuplicateWarningModal from '@/components/DuplicateWarningModal';
 import EStatementGenerator from '@/components/EStatementGenerator';
 import MobileSimulatorFrame from '@/components/MobileSimulatorFrame';
+import { supabase } from '@/lib/supabaseClient';
+
+const isSupabaseConfigured =
+  !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
+  process.env.NEXT_PUBLIC_SUPABASE_URL !== 'your_supabase_project_url_here' &&
+  !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY !== 'your_supabase_anon_key_here';
+
+function getPrayerTimesForLocation(lon: number | null) {
+  const basePrayers = [
+    { name: 'Subuh', time: '04:38' },
+    { name: 'Dzuhur', time: '11:54' },
+    { name: 'Ashar', time: '15:14' },
+    { name: 'Maghrib', time: '17:50' },
+    { name: 'Isya', time: '19:02' }
+  ];
+  if (lon === null) return basePrayers;
+  const shiftMinutes = Math.round((lon - 106.824) * 4);
+  return basePrayers.map(p => {
+    const [h, m] = p.time.split(':').map(Number);
+    let totalMinutes = h * 60 + m + shiftMinutes;
+    if (totalMinutes < 0) totalMinutes += 24 * 60;
+    if (totalMinutes >= 24 * 60) totalMinutes -= 24 * 60;
+    const newH = Math.floor(totalMinutes / 60);
+    const newM = totalMinutes % 60;
+    return {
+      name: p.name,
+      time: `${newH.toString().padStart(2, '0')}:${newM.toString().padStart(2, '0')}`
+    };
+  });
+}
+
+function parseReceiptDate(text: string): Date | null {
+  // Regex for YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  const ymdRegex = /\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/;
+  const ymdMatch = text.match(ymdRegex);
+  if (ymdMatch) {
+    const year = parseInt(ymdMatch[1], 10);
+    const month = parseInt(ymdMatch[2], 10) - 1;
+    const day = parseInt(ymdMatch[3], 10);
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // Regex for DD-MM-YYYY or DD/MM/YYYY or DD.MM.YYYY
+  const dmyRegex = /\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})\b/;
+  const dmyMatch = text.match(dmyRegex);
+  if (dmyMatch) {
+    const p1 = parseInt(dmyMatch[1], 10);
+    const p2 = parseInt(dmyMatch[2], 10);
+    let year = parseInt(dmyMatch[3], 10);
+    if (year < 100) {
+      year += 2000;
+    }
+    
+    // Default: p1 is Day, p2 is Month (Indonesian standard)
+    let day = p1;
+    let month = p2 - 1;
+    if (p1 > 12 && p2 <= 12) {
+      day = p1;
+      month = p2 - 1;
+    } else if (p2 > 12 && p1 <= 12) {
+      day = p2;
+      month = p1 - 1;
+    }
+    
+    if (month >= 0 && month < 12 && day > 0 && day <= 31) {
+      const d = new Date(year, month, day);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
+  // Indonesian / English month names
+  const monthsIndo = ['jan', 'feb', 'mar', 'apr', 'mei', 'jun', 'jul', 'agu', 'sep', 'okt', 'nov', 'des', 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  const monthRegex = new RegExp(`\\b(\\d{1,2})\\s+(${monthsIndo.join('|')})\\s+(\\d{2,4})\\b`, 'i');
+  const monthMatch = text.match(monthRegex);
+  if (monthMatch) {
+    const day = parseInt(monthMatch[1], 10);
+    const monthStr = monthMatch[2].toLowerCase();
+    let year = parseInt(monthMatch[3], 10);
+    if (year < 100) {
+      year += 2000;
+    }
+    
+    let month = -1;
+    if (monthStr.startsWith('jan')) month = 0;
+    else if (monthStr.startsWith('feb')) month = 1;
+    else if (monthStr.startsWith('mar')) month = 2;
+    else if (monthStr.startsWith('apr')) month = 3;
+    else if (monthStr.startsWith('mei') || monthStr.startsWith('may')) month = 4;
+    else if (monthStr.startsWith('jun')) month = 5;
+    else if (monthStr.startsWith('jul')) month = 6;
+    else if (monthStr.startsWith('agu') || monthStr.startsWith('aug')) month = 7;
+    else if (monthStr.startsWith('sep')) month = 8;
+    else if (monthStr.startsWith('okt') || monthStr.startsWith('oct')) month = 9;
+    else if (monthStr.startsWith('nov')) month = 10;
+    else if (monthStr.startsWith('des') || monthStr.startsWith('dec')) month = 11;
+
+    if (month !== -1 && day > 0 && day <= 31) {
+      const d = new Date(year, month, day);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
+  return null;
+}
+
+function parseReceiptText(text: string): { merchantName: string | null; totalAmount: number | null; date: Date | null; items: any[] } {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  
+  if (text.length < 15 || lines.length === 0) {
+    return { merchantName: null, totalAmount: null, date: null, items: [] };
+  }
+  
+  // 1. Merchant Name Extraction (limit to top 5 lines)
+  let merchantName: string | null = null;
+  const candidateLines = lines.slice(0, 5);
+  const storeLine = candidateLines.find(l => 
+    l.length > 3 && 
+    /[a-zA-Z]/.test(l) && 
+    !/total|jumlah|bayar|cash|grand|change|kembali|tax|pajak|disc|discount|promo|item|date|tanggal|time|jam/i.test(l)
+  );
+  if (storeLine) {
+    merchantName = storeLine.replace(/[^a-zA-Z0-9\s]/g, '').trim().toUpperCase().substring(0, 30);
+  }
+  
+  // 2. Date Extraction
+  const date = parseReceiptDate(text);
+  
+  // 3. Total Amount Extraction
+  let totalAmount: number | null = null;
+  let foundTotal = false;
+  
+  // Scan lines from bottom to top for total patterns
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const lineLower = lines[i].toLowerCase();
+    if (lineLower.includes('total') || lineLower.includes('jumlah') || lineLower.includes('bayar') || lineLower.includes('grand') || lineLower.includes('nett') || lineLower.includes('sub')) {
+      const numbersMatch = lines[i].match(/[\d.,]+/g);
+      if (numbersMatch) {
+        const lastGroup = numbersMatch[numbersMatch.length - 1];
+        let cleanVal = lastGroup;
+        if (cleanVal.endsWith(',00') || cleanVal.endsWith('.00')) {
+          cleanVal = cleanVal.substring(0, cleanVal.length - 3);
+        }
+        const val = parseInt(cleanVal.replace(/[^0-9]/g, ''), 10);
+        if (val >= 100) {
+          totalAmount = val;
+          foundTotal = true;
+          break;
+        }
+      }
+    }
+  }
+  
+  // If not found via keywords, look for the largest number in the lines
+  if (!foundTotal) {
+    let maxNum = 0;
+    for (const line of lines) {
+      const numbersMatch = line.match(/[\d.,]+/g);
+      if (numbersMatch) {
+        for (const numGroup of numbersMatch) {
+          let cleanVal = numGroup;
+          if (cleanVal.endsWith(',00') || cleanVal.endsWith('.00')) {
+            cleanVal = cleanVal.substring(0, cleanVal.length - 3);
+          }
+          const val = parseInt(cleanVal.replace(/[^0-9]/g, ''), 10);
+          if (val > maxNum && val < 10000000) {
+            maxNum = val;
+          }
+        }
+      }
+    }
+    if (maxNum >= 100) {
+      totalAmount = maxNum;
+    }
+  }
+
+  const items = totalAmount ? [
+    { name: 'Belanja Struk Kamera', price: totalAmount, quantity: 1, total: totalAmount }
+  ] : [];
+
+  return { merchantName, totalAmount, date, items };
+}
+
+const getLocalDateString = (d: Date = new Date()) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export default function HomePage() {
   // Authentication State
@@ -74,7 +269,7 @@ export default function HomePage() {
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
   const [authError, setAuthError] = useState('');
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id?: string; name: string; email: string } | null>(null);
 
   // Financial Data State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -85,7 +280,6 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'scan' | 'ledger' | 'account'>('dashboard');
 
   // AI Pipeline Simulation State
-  const [selectedReceiptId, setSelectedReceiptId] = useState<string>(MOCK_RECEIPT_TEMPLATES[0].id);
   const [isScanning, setIsScanning] = useState(false);
   const [scanLogs, setScanLogs] = useState<string[]>([]);
   const [activeStep, setActiveStep] = useState<'idle' | 'gemini' | 'claude' | 'gpt' | 'completed'>('idle');
@@ -102,6 +296,7 @@ export default function HomePage() {
   const [drawerTab, setDrawerTab] = useState<'pengeluaran' | 'pemasukan'>('pengeluaran');
   const [manualDesc, setManualDesc] = useState('');
   const [manualAmount, setManualAmount] = useState('');
+  const [manualDate, setManualDate] = useState(getLocalDateString());
   const [manualAllocation, setManualAllocation] = useState<AllocationType | null>('primer');
   const [manualCategory, setManualCategory] = useState('Makan & Minum');
   const [zakatPaid, setZakatPaid] = useState(false);
@@ -129,9 +324,266 @@ export default function HomePage() {
   const [verificationError, setVerificationError] = useState('');
   const [verificationSuccess, setVerificationSuccess] = useState('');
 
+  // Camera Scanner State
+  const [scanInputType, setScanInputType] = useState<'camera' | 'upload'>('camera');
+  const [scanMode, setScanMode] = useState<'preset' | 'camera'>('camera');
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState('');
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+
+  // Registration Success Modal State
+  const [isRegSuccessModalOpen, setIsRegSuccessModalOpen] = useState(false);
+  const [regEmailSent, setRegEmailSent] = useState('');
+
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+
+  // Local Storage persistence initialization guard
+  const isLoadedFromStorage = React.useRef(false);
+
+  // Load registered users, transactions, and session from Local Storage on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const savedUsers = localStorage.getItem('nafi_registered_users');
+    if (savedUsers) {
+      try {
+        setRegisteredUsers(JSON.parse(savedUsers));
+      } catch (e) {
+        console.error('Error parsing registered users:', e);
+      }
+    }
+
+    const savedTxs = localStorage.getItem('nafi_transactions');
+    if (savedTxs) {
+      try {
+        setTransactions(JSON.parse(savedTxs));
+      } catch (e) {
+        console.error('Error parsing transactions:', e);
+      }
+    }
+
+    if (!isSupabaseConfigured) {
+      const savedUser = localStorage.getItem('nafi_current_user');
+      if (savedUser) {
+        try {
+          const parsedUser = JSON.parse(savedUser);
+          setCurrentUser(parsedUser);
+          setAuthStatus('authenticated');
+          setActiveTab('dashboard');
+        } catch (e) {
+          console.error('Error parsing current user session:', e);
+        }
+      }
+    }
+    
+    isLoadedFromStorage.current = true;
+  }, []);
+
+  // Save registered users to Local Storage whenever they change
+  useEffect(() => {
+    if (isLoadedFromStorage.current && typeof window !== 'undefined') {
+      localStorage.setItem('nafi_registered_users', JSON.stringify(registeredUsers));
+    }
+  }, [registeredUsers]);
+
+  // Save transactions to Local Storage whenever they change
+  useEffect(() => {
+    if (isLoadedFromStorage.current && typeof window !== 'undefined') {
+      localStorage.setItem('nafi_transactions', JSON.stringify(transactions));
+    }
+  }, [transactions]);
+
+  // Real-time Geolocation for Prayer Times
+  const [userLocationName, setUserLocationName] = useState('Depok (Mencari GPS...)');
+  const [gpsLatitude, setGpsLatitude] = useState<number | null>(null);
+  const [gpsLongitude, setGpsLongitude] = useState<number | null>(null);
+  const [locationPermissionStatus, setLocationPermissionStatus] = useState<'prompt' | 'granted' | 'denied'>('prompt');
+
+  // Fetch profile and transactions from Supabase
+  // Fetch profile and transactions from Supabase
+  const fetchUserData = async (userId: string, userEmail: string) => {
+    try {
+      const { data: profileData, error: profileErr } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (profileErr) {
+        console.error('Error fetching profile:', profileErr);
+      } else if (profileData) {
+        setProfileName(profileData.name || '');
+        setProfilePhone(profileData.phone || '');
+        setProfileAddress(profileData.address || '');
+        setProfileAvatar(profileData.avatar_url || null);
+      }
+
+      const { data: txData, error: txErr } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('date', { ascending: false });
+
+      if (txErr) {
+        console.error('Error fetching transactions:', txErr);
+      } else if (txData) {
+        const mappedTxs: Transaction[] = txData.map(t => ({
+          id: t.id,
+          date: t.date,
+          description: t.description,
+          amount: parseFloat(t.amount as string),
+          type: t.type as 'incoming' | 'outgoing',
+          allocation: t.allocation as AllocationType | null,
+          category: t.category,
+          runningBalance: 0,
+          userEmail: userEmail
+        }));
+        setTransactions(mappedTxs);
+      }
+    } catch (e) {
+      console.error('Error fetching user data from Supabase:', e);
+    }
+  };
+
+  // Upload Avatar to Supabase Storage
+  const handleAvatarUpload = async (file: File) => {
+    if (!currentUser?.id) return;
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${currentUser.id}-${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      // Upload image to avatars bucket
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      setProfileAvatar(publicUrl);
+      alert('Foto profil berhasil diunggah!');
+    } catch (e: any) {
+      console.error('Error uploading avatar:', e);
+      alert('Gagal mengunggah foto profil: ' + e.message);
+    }
+  };
+
+  // Supabase Auth Listener
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const u = session.user;
+        setCurrentUser({
+          id: u.id,
+          email: u.email || '',
+          name: u.user_metadata?.display_name || u.user_metadata?.name || 'Pengguna NaFi'
+        });
+        setAuthStatus('authenticated');
+        fetchUserData(u.id, u.email || '');
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const u = session.user;
+        setCurrentUser({
+          id: u.id,
+          email: u.email || '',
+          name: u.user_metadata?.display_name || u.user_metadata?.name || 'Pengguna NaFi'
+        });
+        setAuthStatus('authenticated');
+        fetchUserData(u.id, u.email || '');
+      } else {
+        setCurrentUser(null);
+        setAuthStatus('login');
+        setTransactions([]);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const requestLocation = () => {
+    if (typeof window !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          setGpsLatitude(latitude);
+          setGpsLongitude(longitude);
+          setLocationPermissionStatus('granted');
+          
+          try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+            if (res.ok) {
+              const data = await res.json();
+              const city = data.address.city || data.address.town || data.address.village || data.address.suburb || 'Lokasi GPS';
+              setUserLocationName(city);
+            } else {
+              setUserLocationName(`${latitude.toFixed(2)}, ${longitude.toFixed(2)}`);
+            }
+          } catch (e) {
+            setUserLocationName(`${latitude.toFixed(2)}, ${longitude.toFixed(2)}`);
+          }
+        },
+        (error) => {
+          console.error(error);
+          setLocationPermissionStatus('denied');
+          setUserLocationName('Depok (Default)');
+        }
+      );
+    } else {
+      setUserLocationName('Depok (GPS tidak didukung)');
+    }
+  };
+
+  // Request geolocation on mount
+  useEffect(() => {
+    requestLocation();
+  }, []);
+
+  // Drawer/Modal Mode for creation, edit, or scan review
+  const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | 'scan_review'>('create');
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
+
+  // Bind cameraStream to video element
+  useEffect(() => {
+    if (videoRef.current && cameraStream) {
+      videoRef.current.srcObject = cameraStream;
+    }
+  }, [cameraStream, isCameraActive, scanMode]);
+
+  // Automatically start camera when navigating to scan tab, and stop it when leaving or logging out
+  useEffect(() => {
+    if (activeTab === 'scan' && authStatus === 'authenticated' && scanInputType === 'camera') {
+      startCamera();
+    } else {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        setCameraStream(null);
+      }
+      setIsCameraActive(false);
+    }
+  }, [activeTab, authStatus, scanInputType]);
+
   // Sync profile details when currentUser changes
   useEffect(() => {
     if (currentUser) {
+      if (isSupabaseConfigured) {
+        setProfileEmail(currentUser.email);
+        return;
+      }
       const regUser = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
       if (regUser) {
         setProfileName(regUser.name);
@@ -200,13 +652,7 @@ export default function HomePage() {
       const now = new Date();
       setCurrentDateTime(now);
 
-      const PRAYER_TIMES = [
-        { name: 'Subuh', time: '04:38' },
-        { name: 'Dzuhur', time: '11:54' },
-        { name: 'Ashar', time: '15:14' },
-        { name: 'Maghrib', time: '17:50' },
-        { name: 'Isya', time: '19:02' }
-      ];
+      const PRAYER_TIMES = getPrayerTimesForLocation(gpsLongitude);
 
       // Find next prayer
       let nextP: { name: string; time: string } | null = null;
@@ -248,32 +694,66 @@ export default function HomePage() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, []);
+  }, [gpsLongitude]);
 
   // Auth Handling
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
+
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: authEmail,
+        password: authPassword
+      });
+      if (error) {
+        setAuthError('Email atau sandi tidak cocok. Silakan coba lagi. (' + error.message + ')');
+      }
+      return;
+    }
 
     const user = registeredUsers.find(
       u => u.email.toLowerCase() === authEmail.toLowerCase() && u.password === authPassword
     );
 
     if (user) {
-      setCurrentUser({ name: user.name, email: user.email });
+      const userSession = { name: user.name, email: user.email };
+      setCurrentUser(userSession);
       setAuthStatus('authenticated');
       setActiveTab('dashboard');
+      if (!isSupabaseConfigured) {
+        localStorage.setItem('nafi_current_user', JSON.stringify(userSession));
+      }
     } else {
       setAuthError('Email atau sandi tidak cocok. Silakan coba lagi.');
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
 
     if (!authName || !authEmail || !authPassword) {
       setAuthError('Mohon isi seluruh data.');
+      return;
+    }
+
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.auth.signUp({
+        email: authEmail,
+        password: authPassword,
+        options: {
+          data: {
+            display_name: authName
+          }
+        }
+      });
+      if (error) {
+        setAuthError('Registrasi gagal: ' + error.message);
+      } else {
+        setRegEmailSent(authEmail);
+        setIsRegSuccessModalOpen(true);
+      }
       return;
     }
 
@@ -294,22 +774,25 @@ export default function HomePage() {
     };
     setRegisteredUsers(prev => [...prev, newUser]);
     
-    // Auto-login or redirect
-    setCurrentUser({ name: newUser.name, email: newUser.email });
-    setAuthStatus('authenticated');
-    setActiveTab('dashboard');
-    
-    // Clear registration fields
-    setAuthName('');
-    setAuthEmail('');
-    setAuthPassword('');
+    setRegEmailSent(authEmail);
+    setIsRegSuccessModalOpen(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    stopCamera();
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut();
+    }
     setCurrentUser(null);
     setAuthStatus('login');
     setAuthEmail('');
     setAuthPassword('');
+    setCapturedImage(null);
+    setScanResult(null);
+    setIsScanning(false);
+    if (!isSupabaseConfigured) {
+      localStorage.removeItem('nafi_current_user');
+    }
   };
 
   // Filter transactions by the current user's email to ensure complete data isolation
@@ -335,90 +818,277 @@ export default function HomePage() {
     investasi: totalExpenses > 0 ? Math.round((expensesByAllocation.investasi / totalExpenses) * 100) : 0,
   };
 
-  const getSelectedReceipt = (): MockReceiptTemplate | undefined => {
-    return MOCK_RECEIPT_TEMPLATES.find(r => r.id === selectedReceiptId);
+  // Camera Scanner Handlers
+  const startCamera = async () => {
+    try {
+      setCameraError('');
+      setCapturedImage(null);
+      setScanResult(null);
+      setActiveStep('idle');
+      
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
+      });
+      setCameraStream(stream);
+      setIsCameraActive(true);
+    } catch (err: any) {
+      console.error(err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCameraError('Izin kamera ditolak. Silakan berikan izin akses kamera di pengaturan browser Anda.');
+      } else {
+        setCameraError('Kamera tidak ditemukan atau tidak dapat diakses.');
+      }
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+    setIsCameraActive(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        setCapturedImage(dataUrl);
+        stopCamera();
+      }
+    }
   };
 
   // Multi-Agent OCR Scan Simulation
   const handleStartScan = async () => {
-    const receipt = MOCK_RECEIPT_TEMPLATES.find(r => r.id === selectedReceiptId);
-    if (!receipt) return;
+    if (!capturedImage) {
+      alert('Mohon ambil foto struk terlebih dahulu!');
+      return;
+    }
 
     setIsScanning(true);
-    setScanLogs([]);
+    setScanLogs(['🔄 [NAFI AI] Inisialisasi Modul OCR Tesseract...', '📸 [NAFI AI] Membaca data gambar...']);
     setScanResult(null);
-    setActiveStep('idle');
+    setActiveStep('gemini');
 
     try {
+      setScanLogs(prev => [...prev, '🔍 [GEMINI 2.5 FLASH] Menjalankan OCR karakter...']);
+      
+      // Run real client-side OCR using Tesseract.js
+      const ocrResult = await Tesseract.recognize(capturedImage, 'eng');
+      const text = ocrResult.data.text;
+      const parsed = parseReceiptText(text);
+
+      // Check if all crucial fields are parsed. If not, notify user and prompt scan retry
+      if (!parsed.merchantName || !parsed.totalAmount || !parsed.date) {
+        alert('⚠️ Pemindaian gagal! Keterangan, nominal, atau tanggal pada struk tidak terbaca dengan jelas. Silakan posisikan struk dengan tegak di area terang dan lakukan scan ulang.');
+        
+        // Reset states and restart camera if in camera mode
+        setCapturedImage(null);
+        setScanResult(null);
+        setIsScanning(false);
+        setActiveStep('idle');
+        if (scanInputType === 'camera') {
+          startCamera();
+        }
+        return;
+      }
+      
+      setScanLogs(prev => [
+        ...prev,
+        `📄 [GEMINI 2.5 FLASH] Logo/Toko terdeteksi: "${parsed.merchantName!}"`,
+        `📄 [GEMINI 2.5 FLASH] Nominal terdeteksi: IDR ${parsed.totalAmount!.toLocaleString('id-ID')}`,
+        `📄 [GEMINI 2.5 FLASH] Tanggal terdeteksi: ${getLocalDateString(parsed.date!)}`,
+        '✅ [GEMINI 2.5 FLASH] Karakter struk berhasil diekstraksi!'
+      ]);
+
+      const receiptData = {
+        merchantName: parsed.merchantName!,
+        date: parsed.date!.toISOString(),
+        items: parsed.items,
+        tax: 0,
+        discount: 0,
+        totalAmount: parsed.totalAmount!
+      };
+
       const result = await simulateMultiAgentPipeline(
-        receipt.data,
+        receiptData,
         transactions,
         (event) => {
           setActiveStep(event.step);
-          setScanLogs(event.logs);
+          if (event.step !== 'gemini') {
+            setScanLogs(prev => {
+              // Append logs
+              const uniqueLogs = Array.from(new Set([...prev, ...event.logs]));
+              return uniqueLogs;
+            });
+          }
         }
       );
 
       setScanResult(result);
       setCurrentAdvice(result.gptAdvice);
+
+      // Stop camera if running
+      stopCamera();
+
+      // Prefill manual drawer fields with the AI scan results
+      setManualDesc(result.scanData.merchantName);
+      setManualAmount(result.scanData.totalAmount.toString());
+      setManualDate(getLocalDateString(new Date(result.scanData.date))); // Scanned date!
+      setDrawerTab('pengeluaran'); // receipts default to pengeluaran/expense
+      setManualAllocation(result.allocation);
+      setManualCategory(result.category);
+      setDrawerMode('scan_review');
+      setIsDrawerOpen(true); // Pop up the drawer!
     } catch (err) {
       console.error(err);
-      setActiveStep('idle');
+      alert('⚠️ Pemindaian gagal! Tidak dapat memproses gambar struk. Silakan coba lagi dengan gambar yang lebih jelas.');
+      
+      // Reset states and restart camera if in camera mode
+      setCapturedImage(null);
+      setScanResult(null);
       setIsScanning(false);
+      setActiveStep('idle');
+      if (scanInputType === 'camera') {
+        startCamera();
+      }
     }
   };
 
   const handleSaveTransaction = () => {
     if (!scanResult) return;
-
-    if (scanResult.isDuplicate) {
-      const receiptTime = new Date(scanResult.scanData.date).getTime();
-      const match = transactions.find((tx) => {
-        const txTime = new Date(tx.date).getTime();
-        const timeDiffMins = Math.abs(txTime - receiptTime) / (1000 * 60);
-        const sameAmount = Math.abs(tx.amount) === scanResult.scanData.totalAmount;
-        const sameMerchant = tx.description.toLowerCase().includes(scanResult.scanData.merchantName.toLowerCase()) || 
-                             scanResult.scanData.merchantName.toLowerCase().includes(tx.description.toLowerCase());
-        return timeDiffMins <= 10 && sameAmount && sameMerchant;
-      });
-
-      if (match) {
-        setMatchedTx(match);
-        setIsDupModalOpen(true);
-        return;
-      }
-    }
-
-    commitTransaction();
+    // Open the drawer in scan review mode so they can choose type and edit details
+    setManualDesc(scanResult.scanData.merchantName);
+    setManualAmount(scanResult.scanData.totalAmount.toString());
+    setManualDate(getLocalDateString(new Date(scanResult.scanData.date))); // Scanned date!
+    setDrawerTab('pengeluaran');
+    setManualAllocation(scanResult.allocation);
+    setManualCategory(scanResult.category);
+    setDrawerMode('scan_review');
+    setIsDrawerOpen(true);
   };
 
-  const commitTransaction = () => {
-    if (!scanResult) return;
+  const commitTransaction = async () => {
+    const isIncoming = drawerTab === 'pemasukan';
+    const parsedVal = parseFloat(manualAmount) || (scanResult ? scanResult.scanData.totalAmount : 0);
+    const dateStr = new Date(manualDate).toISOString();
 
-    const newTx: Transaction = {
-      id: `tx-${Date.now()}`,
-      userEmail: currentUser?.email || '',
-      date: scanResult.scanData.date,
-      description: scanResult.scanData.merchantName,
-      amount: -scanResult.scanData.totalAmount,
-      type: 'outgoing',
-      allocation: scanResult.allocation,
-      category: scanResult.category,
-      runningBalance: 0
-    };
+    if (isSupabaseConfigured && currentUser?.id) {
+      const dbTx = {
+        user_id: currentUser.id,
+        date: dateStr,
+        description: manualDesc,
+        amount: isIncoming ? parsedVal : -parsedVal,
+        type: isIncoming ? 'incoming' : 'outgoing',
+        allocation: isIncoming ? null : manualAllocation,
+        category: manualCategory
+      };
 
-    setTransactions(prev => [...prev, newTx]);
+      const { data, error } = await supabase
+        .from('transactions')
+        .insert([dbTx])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error inserting transaction:', error);
+        alert('Gagal menyimpan ke Supabase: ' + error.message);
+        return;
+      }
+
+      if (data) {
+        const newTx: Transaction = {
+          id: data.id,
+          date: data.date,
+          description: data.description,
+          amount: parseFloat(data.amount as string),
+          type: data.type as 'incoming' | 'outgoing',
+          allocation: data.allocation as AllocationType | null,
+          category: data.category,
+          runningBalance: 0,
+          userEmail: currentUser?.email
+        };
+        setTransactions(prev => [...prev, newTx]);
+      }
+    } else {
+      const newTx: Transaction = {
+        id: `tx-scan-${Date.now()}`,
+        userEmail: currentUser?.email || '',
+        date: dateStr,
+        description: manualDesc,
+        amount: isIncoming ? parsedVal : -parsedVal,
+        type: isIncoming ? 'incoming' : 'outgoing',
+        allocation: isIncoming ? null : manualAllocation,
+        category: manualCategory,
+        runningBalance: 0
+      };
+      setTransactions(prev => [...prev, newTx]);
+    }
+    
+    // Clear scanner states
     setScanResult(null);
     setActiveStep('idle');
     setIsScanning(false);
     setIsDupModalOpen(false);
-    setActiveTab('dashboard'); // Direct user back to dashboard to see results
+    setCapturedImage(null); // Reset captured photo!
+    
+    // Reset manual drawer fields
+    setManualDesc('');
+    setManualAmount('');
+    setIsDrawerOpen(false);
+    setDrawerMode('create');
+    
+    // Go to dashboard
+    setActiveTab('dashboard');
+    setCurrentAdvice(`Berhasil menyimpan hasil scan "${manualDesc}" sebesar IDR ${parsedVal.toLocaleString('id-ID')}.`);
   };
 
-
-
-  const handleDeleteTransaction = (id: string) => {
+  const handleDeleteTransaction = async (id: string) => {
+    if (isSupabaseConfigured) {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id);
+      if (error) {
+        console.error('Error deleting transaction:', error);
+        alert('Gagal menghapus dari Supabase: ' + error.message);
+        return;
+      }
+    }
     setTransactions(prev => prev.filter(t => t.id !== id));
+  };
+
+  const handleEditTransaction = (tx: Transaction) => {
+    setEditingTransactionId(tx.id);
+    setManualDesc(tx.description);
+    setManualAmount(Math.abs(tx.amount).toString());
+    setManualDate(getLocalDateString(new Date(tx.date))); // Original transaction date!
+    setDrawerTab(tx.type === 'incoming' ? 'pemasukan' : 'pengeluaran');
+    setManualAllocation(tx.allocation);
+    setManualCategory(tx.category);
+    setDrawerMode('edit');
+    setIsDrawerOpen(true);
+  };
+
+  const openNewTransactionDrawer = () => {
+    setDrawerMode('create');
+    setEditingTransactionId(null);
+    setManualDesc('');
+    setManualAmount('');
+    setManualDate(getLocalDateString()); // Reset to today's date!
+    setManualAllocation('primer');
+    setManualCategory('Makan & Minum');
+    setDrawerTab('pengeluaran');
+    setIsDrawerOpen(true);
   };
 
   // Filter & Search ledger
@@ -444,6 +1114,20 @@ export default function HomePage() {
             </div>
             <h2 className="text-xl font-extrabold text-[#091413] mt-3">Masuk Ke NaFi</h2>
             <p className="text-3xs text-slate-500 tracking-wide mt-1">SMART PERSONAL FINANCIAL MANAGEMENT</p>
+            {/* Supabase connection indicator */}
+            <div className="mt-3.5 flex justify-center">
+              {isSupabaseConfigured ? (
+                <div className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[8px] text-emerald-800 font-extrabold flex items-center gap-1">
+                  <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Koneksi Supabase Aktif</span>
+                </div>
+              ) : (
+                <div className="px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[8px] text-amber-800 font-extrabold flex items-center gap-1">
+                  <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  <span>Mode Lokal (Data Disimpan di Memori)</span>
+                </div>
+              )}
+            </div>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
@@ -648,10 +1332,15 @@ export default function HomePage() {
                     <Clock className="h-3.5 w-3.5 text-emerald-300" />
                     <span className="text-[9px] font-bold tracking-wider uppercase">PENGINGAT WAKTU SHOLAT</span>
                   </div>
-                  <div className="flex items-center gap-1 text-[8px] text-[#FFFDEB]/80 font-medium">
-                    <MapPin className="h-2.5 w-2.5 text-emerald-300" />
-                    <span>Depok</span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={requestLocation}
+                    className="flex items-center gap-1 text-[8px] text-[#FFFDEB]/80 font-bold hover:text-white transition-colors cursor-pointer"
+                    title="Klik untuk perbarui lokasi GPS"
+                  >
+                    <MapPin className={`h-2.5 w-2.5 ${locationPermissionStatus === 'granted' ? 'text-emerald-300 animate-pulse' : 'text-amber-300'}`} />
+                    <span>{userLocationName}</span>
+                  </button>
                 </div>
 
                 <div className="flex justify-between items-center bg-[#091413]/40 p-2 rounded-xl border border-white/5">
@@ -673,13 +1362,7 @@ export default function HomePage() {
 
                 {/* Horizontal Prayer Times Grid */}
                 <div className="grid grid-cols-5 gap-1 text-center font-mono">
-                  {[
-                    { name: 'Subuh', time: '04:38' },
-                    { name: 'Dzuhur', time: '11:54' },
-                    { name: 'Ashar', time: '15:14' },
-                    { name: 'Maghrib', time: '17:50' },
-                    { name: 'Isya', time: '19:02' }
-                  ].map((p) => {
+                  {getPrayerTimesForLocation(gpsLongitude).map((p) => {
                     const isNext = p.name === nextPrayerName;
                     return (
                       <div 
@@ -717,23 +1400,67 @@ export default function HomePage() {
                 </div>
                 <div className="flex items-center">
                   <button
-                    onClick={() => {
-                      setZakatPaid(!zakatPaid);
-                      if (!zakatPaid) {
-                        const newTx: Transaction = {
-                          id: `tx-zakat-${Date.now()}`,
-                          userEmail: currentUser?.email || '',
-                          date: new Date().toISOString(),
-                          description: 'Sedekah Bulanan Wajib (NaFi Reminder)',
-                          amount: -100000,
-                          type: 'outgoing',
-                          allocation: 'primer',
-                          category: 'Zakat/Donasi',
-                          runningBalance: 0
-                        };
-                        setTransactions(prev => [...prev, newTx]);
+                    onClick={async () => {
+                      const targetZakatPaid = !zakatPaid;
+                      setZakatPaid(targetZakatPaid);
+                      if (targetZakatPaid) {
+                        const dateStr = new Date().toISOString();
+                        if (isSupabaseConfigured && currentUser?.id) {
+                          const dbTx = {
+                            user_id: currentUser.id,
+                            date: dateStr,
+                            description: 'Sedekah Bulanan Wajib (NaFi Reminder)',
+                            amount: -100000,
+                            type: 'outgoing',
+                            allocation: 'primer',
+                            category: 'Zakat/Donasi'
+                          };
+                          const { data, error } = await supabase
+                            .from('transactions')
+                            .insert([dbTx])
+                            .select()
+                            .single();
+                          if (error) {
+                            console.error('Error adding Zakat:', error);
+                          } else if (data) {
+                            const newTx: Transaction = {
+                              id: data.id,
+                              date: data.date,
+                              description: data.description,
+                              amount: parseFloat(data.amount as string),
+                              type: data.type as 'incoming' | 'outgoing',
+                              allocation: data.allocation as AllocationType | null,
+                              category: data.category,
+                              runningBalance: 0,
+                              userEmail: currentUser?.email
+                            };
+                            setTransactions(prev => [...prev, newTx]);
+                          }
+                        } else {
+                          const newTx: Transaction = {
+                            id: `tx-zakat-${Date.now()}`,
+                            userEmail: currentUser?.email || '',
+                            date: dateStr,
+                            description: 'Sedekah Bulanan Wajib (NaFi Reminder)',
+                            amount: -100000,
+                            type: 'outgoing',
+                            allocation: 'primer',
+                            category: 'Zakat/Donasi',
+                            runningBalance: 0
+                          };
+                          setTransactions(prev => [...prev, newTx]);
+                        }
                         setCurrentAdvice('Alhamdulillah, sedekah bulanan Anda sebesar IDR 100.000 telah tercatat dan dibayarkan. Semoga berkah.');
                       } else {
+                        if (isSupabaseConfigured) {
+                          const { error } = await supabase
+                            .from('transactions')
+                            .delete()
+                            .eq('description', 'Sedekah Bulanan Wajib (NaFi Reminder)');
+                          if (error) {
+                            console.error('Error deleting Zakat transaction:', error);
+                          }
+                        }
                         setTransactions(prev => prev.filter(t => t.description !== 'Sedekah Bulanan Wajib (NaFi Reminder)' || t.userEmail?.toLowerCase() !== currentUser?.email?.toLowerCase()));
                       }
                     }}
@@ -750,7 +1477,7 @@ export default function HomePage() {
 
               {/* 60-20-20 Budget Allocations */}
               <div className="space-y-2">
-                <span className="text-3xs font-extrabold text-[#091413] tracking-wider block">ALOKASI ANGGARAN (60-20-25)</span>
+                <span className="text-3xs font-extrabold text-[#091413] tracking-wider block">ALOKASI ANGGARAN</span>
                 
                 {/* Pos Primer */}
                 <div className="organic-card rounded-xl p-3 bg-white/40 space-y-1">
@@ -825,33 +1552,165 @@ export default function HomePage() {
           {activeTab === 'scan' && (
             <div className="space-y-4 animate-in fade-in duration-200">
               
+              {/* Option Selector: Scan Kamera atau Upload Media */}
+              <div className="flex bg-[#FFFDEB] p-1 rounded-xl border border-[#346739]/10 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScanInputType('camera');
+                    setCapturedImage(null);
+                    setScanResult(null);
+                    setIsScanning(false);
+                    setActiveStep('idle');
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-3xs font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                    scanInputType === 'camera'
+                      ? 'bg-[#346739] text-[#FFFDEB] shadow-sm'
+                      : 'text-slate-500 hover:text-[#091413] hover:bg-[#346739]/5'
+                  }`}
+                >
+                  <Camera className="h-3.5 w-3.5" />
+                  Scan Kamera
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScanInputType('upload');
+                    setCapturedImage(null);
+                    setScanResult(null);
+                    setIsScanning(false);
+                    setActiveStep('idle');
+                    stopCamera();
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-3xs font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                    scanInputType === 'upload'
+                      ? 'bg-[#346739] text-[#FFFDEB] shadow-sm'
+                      : 'text-slate-500 hover:text-[#091413] hover:bg-[#346739]/5'
+                  }`}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Upload Media
+                </button>
+              </div>
+
               <div className="organic-card rounded-xl p-4 bg-[#FBE8CE]/50 space-y-3">
                 
-                <div>
-                  <label className="text-3xs font-extrabold text-[#091413] uppercase block mb-1">Draf Resi Belanja</label>
-                  <select 
-                    value={selectedReceiptId}
-                    onChange={(e) => {
-                      setSelectedReceiptId(e.target.value);
-                      setScanResult(null);
-                      setActiveStep('idle');
-                    }}
-                    disabled={isScanning}
-                    className="w-full px-2 py-1.5 bg-[#FFFDEB] border border-[#346739]/20 rounded-lg text-xs font-semibold text-[#091413]"
-                  >
-                    {MOCK_RECEIPT_TEMPLATES.map((rc) => (
-                      <option key={rc.id} value={rc.id}>{rc.name}</option>
-                    ))}
-                  </select>
+                <div className="text-3xs text-[#346739] font-extrabold text-center py-1 uppercase tracking-wider">
+                  {capturedImage 
+                    ? '📄 File Struk Terunggah' 
+                    : scanInputType === 'camera' 
+                      ? '📷 Posisikan Struk di Kamera' 
+                      : '📁 Unggah Gambar Struk dari Galeri'}
                 </div>
 
                 {/* Simulated screen box */}
                 <div className="relative aspect-[4/3] rounded-lg overflow-hidden border border-[#346739]/15 bg-slate-900 flex items-center justify-center">
-                  <img 
-                    src={getSelectedReceipt()?.imageUrl} 
-                    alt="Scan Receipt"
-                    className="absolute inset-0 w-full h-full object-cover opacity-60" 
-                  />
+                  
+                  {/* Camera Mode Renders */}
+                  {scanInputType === 'camera' && (
+                    <>
+                      {isCameraActive && !capturedImage && (
+                        <>
+                          <video 
+                            ref={videoRef} 
+                            autoPlay 
+                            playsInline 
+                            muted
+                            className="absolute inset-0 w-full h-full object-cover" 
+                          />
+                          {/* Viewfinder crosshairs */}
+                          <div className="absolute inset-8 border border-white/35 rounded-lg pointer-events-none flex items-center justify-center">
+                            <div className="w-4 h-0.5 bg-white/50 absolute" />
+                            <div className="h-4 w-0.5 bg-white/50 absolute" />
+                          </div>
+                        </>
+                      )}
+                      
+                      {capturedImage && (
+                        <img 
+                          src={capturedImage} 
+                          alt="Captured Photo" 
+                          className="absolute inset-0 w-full h-full object-cover" 
+                        />
+                      )}
+
+                      {cameraError && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-slate-950/90 text-center space-y-3">
+                          <AlertCircle className="h-6 w-6 text-rose-500" />
+                          <span className="text-3xs font-extrabold text-white leading-relaxed">{cameraError}</span>
+                          <div className="flex flex-col gap-2 w-full max-w-[150px]">
+                            <button
+                              type="button"
+                              onClick={startCamera}
+                              className="px-3 py-1.5 bg-[#346739] hover:bg-[#284f2c] text-[#FFFDEB] rounded-lg text-3xs font-bold transition-all cursor-pointer"
+                            >
+                              Minta Izin Kamera
+                            </button>
+                            <label className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-[#FFFDEB] rounded-lg text-3xs font-bold transition-all cursor-pointer text-center block">
+                              Unggah File Galeri
+                              <input 
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const reader = new FileReader();
+                                    reader.onload = () => {
+                                      setCapturedImage(reader.result as string);
+                                      setCameraError('');
+                                      stopCamera();
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Upload Mode Renders */}
+                  {scanInputType === 'upload' && (
+                    <>
+                      {!capturedImage && (
+                        <label className="absolute inset-0 flex flex-col items-center justify-center p-5 bg-[#FFFDEB] hover:bg-[#FFFDEB]/90 border-2 border-dashed border-[#346739]/20 rounded-lg m-2 text-center cursor-pointer transition-all select-none">
+                          <div className="h-10 w-10 rounded-full bg-[#346739]/10 flex items-center justify-center text-[#346739] mb-2">
+                            <Upload className="h-5 w-5" />
+                          </div>
+                          <span className="text-2xs font-extrabold text-[#091413] mb-1">Pilih File Struk</span>
+                          <p className="text-4xs text-slate-500 font-semibold max-w-[180px] leading-normal">
+                            Ambil foto atau pilih gambar struk dari galeri HP Anda
+                          </p>
+                          <input 
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                  setCapturedImage(reader.result as string);
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                        </label>
+                      )}
+
+                      {capturedImage && (
+                        <img 
+                          src={capturedImage} 
+                          alt="Uploaded Receipt" 
+                          className="absolute inset-0 w-full h-full object-cover" 
+                        />
+                      )}
+                    </>
+                  )}
 
                   {/* Scanning Animation lines in Green theme */}
                   {isScanning && activeStep === 'gemini' && (
@@ -880,25 +1739,119 @@ export default function HomePage() {
                   )}
                 </div>
 
+                {/* Camera Control Shutter */}
+                {scanInputType === 'camera' && !isScanning && (
+                  <div className="flex justify-center gap-2">
+                    {isCameraActive && !capturedImage && (
+                      <div className="flex items-center gap-6 justify-center w-full">
+                        {/* File Upload Button */}
+                        <label 
+                          className="h-9 w-9 rounded-full bg-[#346739]/10 border border-[#346739]/25 flex items-center justify-center text-[#346739] hover:bg-[#346739]/20 transition-all cursor-pointer shrink-0"
+                          title="Unggah Foto dari Galeri"
+                        >
+                          <FolderOpen className="h-4 w-4" />
+                          <input 
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                  setCapturedImage(reader.result as string);
+                                  stopCamera();
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                        </label>
+
+                        {/* Shutter Button */}
+                        <button
+                          type="button"
+                          onClick={capturePhoto}
+                          className="h-11 w-11 rounded-full bg-rose-600 border-4 border-white flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                          title="Ambil Foto Struk"
+                        >
+                          <div className="h-3.5 w-3.5 bg-rose-600 rounded-full" />
+                        </button>
+
+                        {/* Spacer for visual symmetry */}
+                        <div className="w-9 h-9 shrink-0" />
+                      </div>
+                    )}
+                    {capturedImage && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCapturedImage(null);
+                          setScanResult(null);
+                          startCamera();
+                        }}
+                        className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-3xs font-black transition-all cursor-pointer"
+                      >
+                        Reset / Scan Ulang
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Upload Control Reset */}
+                {scanInputType === 'upload' && !isScanning && capturedImage && (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCapturedImage(null);
+                        setScanResult(null);
+                      }}
+                      className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-3xs font-black transition-all cursor-pointer"
+                    >
+                      Reset / Unggah Ulang
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex gap-2">
                   <button
                     onClick={handleStartScan}
-                    disabled={isScanning}
+                    disabled={isScanning || !capturedImage}
                     className="flex-1 py-2 rounded-lg bg-[#346739] text-[#FFFDEB] font-bold text-xs flex items-center justify-center gap-1.5 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
                     <Cpu className="h-3.5 w-3.5" />
                     {isScanning ? 'Proses AI...' : 'Scan AI'}
                   </button>
                   {scanResult && !isScanning && (
-                    <button
-                      onClick={handleSaveTransaction}
-                      className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-[#FFFDEB] font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
-                    >
-                      <FileCheck2 className="h-3.5 w-3.5" />
-                      Simpan
-                    </button>
+                    <>
+                      <button
+                        onClick={handleSaveTransaction}
+                        className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-[#FFFDEB] font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <FileCheck2 className="h-3.5 w-3.5" />
+                        Simpan
+                      </button>
+                      <button
+                        onClick={() => {
+                          setCapturedImage(null);
+                          setScanResult(null);
+                          setIsScanning(false);
+                          setActiveStep('idle');
+                          if (scanInputType === 'camera') {
+                            startCamera();
+                          }
+                        }}
+                        className="px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-[#FFFDEB] font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Gagalkan
+                      </button>
+                    </>
                   )}
                 </div>
+
+                <canvas ref={canvasRef} className="hidden" />
 
                 {/* Scan results info inside mobile screen */}
                 {scanResult && !isScanning && (
@@ -1008,8 +1961,17 @@ export default function HomePage() {
                           </div>
                           
                           <button
+                            onClick={() => handleEditTransaction(tx)}
+                            className="p-1 text-emerald-700 hover:bg-emerald-50 rounded"
+                            title="Edit Transaksi"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                          
+                          <button
                             onClick={() => handleDeleteTransaction(tx.id)}
                             className="p-1 text-rose-700 hover:bg-rose-50 rounded"
+                            title="Hapus Transaksi"
                           >
                             <Trash2 className="h-3 w-3" />
                           </button>
@@ -1141,14 +2103,18 @@ export default function HomePage() {
                         type="file" 
                         accept="image/*" 
                         className="hidden" 
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setProfileAvatar(reader.result as string);
-                            };
-                            reader.readAsDataURL(file);
+                            if (isSupabaseConfigured) {
+                              await handleAvatarUpload(file);
+                            } else {
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                setProfileAvatar(reader.result as string);
+                              };
+                              reader.readAsDataURL(file);
+                            }
                           }
                         }}
                       />
@@ -1293,6 +2259,15 @@ export default function HomePage() {
                       />
                     </div>
 
+                    {/* Supabase Profile save indicator */}
+                    <div className="mt-2 text-center select-none">
+                      {isSupabaseConfigured ? (
+                        <span className="text-[7px] text-emerald-700 font-extrabold">✓ Profil disimpan langsung ke Supabase Cloud</span>
+                      ) : (
+                        <span className="text-[7px] text-amber-700 font-extrabold">⚠ Menyimpan perubahan ke data lokal device ini</span>
+                      )}
+                    </div>
+
                   </div>
 
                   {/* Actions buttons */}
@@ -1313,32 +2288,83 @@ export default function HomePage() {
                         }
 
                         // Save updates
-                        if (currentUser) {
-                          // Update current user session
-                          setCurrentUser({
-                            name: profileName,
-                            email: profileEmail
-                          });
-
-                          // Update registeredUsers database
-                          setRegisteredUsers(prev => prev.map(u => {
-                            if (u.email.toLowerCase() === currentUser.email.toLowerCase()) {
-                              return {
-                                ...u,
+                        const saveUpdates = async () => {
+                          if (currentUser) {
+                            if (isSupabaseConfigured && currentUser.id) {
+                              const profileUpdate = {
                                 name: profileName,
-                                email: profileEmail,
-                                password: profilePassword,
                                 phone: profilePhone,
                                 address: profileAddress,
-                                avatar: profileAvatar
+                                avatar_url: profileAvatar,
+                                updated_at: new Date().toISOString()
                               };
-                            }
-                            return u;
-                          }));
 
-                          setIsEditingProfile(false);
-                          alert('Profil berhasil diperbarui!');
-                        }
+                              const { error } = await supabase
+                                .from('profiles')
+                                .update(profileUpdate)
+                                .eq('id', currentUser.id);
+
+                              if (error) {
+                                console.error('Error updating profile in Supabase:', error);
+                                alert('Gagal menyimpan profil ke Supabase: ' + error.message);
+                                return;
+                              }
+
+                              if (profilePassword) {
+                                const { error: pwdErr } = await supabase.auth.updateUser({
+                                  password: profilePassword
+                                });
+                                if (pwdErr) {
+                                  alert('Gagal memperbarui sandi: ' + pwdErr.message);
+                                }
+                              }
+
+                              if (profileEmail && profileEmail.toLowerCase() !== currentUser.email.toLowerCase()) {
+                                const { error: emailErr } = await supabase.auth.updateUser({
+                                  email: profileEmail
+                                });
+                                if (emailErr) {
+                                  alert('Gagal memperbarui email: ' + emailErr.message);
+                                } else {
+                                  alert('Email konfirmasi dikirim ke alamat email baru Anda. Silakan verifikasi untuk mengubah email.');
+                                }
+                              }
+                            }
+
+                            // Update current user session
+                            const updatedUserSession = {
+                              name: profileName,
+                              email: profileEmail
+                            };
+                            setCurrentUser(prev => prev ? {
+                              ...prev,
+                              ...updatedUserSession
+                            } : null);
+                            if (!isSupabaseConfigured) {
+                              localStorage.setItem('nafi_current_user', JSON.stringify(updatedUserSession));
+                            }
+
+                            // Update registeredUsers database
+                            setRegisteredUsers(prev => prev.map(u => {
+                              if (u.email.toLowerCase() === currentUser.email.toLowerCase()) {
+                                return {
+                                  ...u,
+                                  name: profileName,
+                                  email: profileEmail,
+                                  password: profilePassword,
+                                  phone: profilePhone,
+                                  address: profileAddress,
+                                  avatar: profileAvatar
+                                };
+                              }
+                              return u;
+                            }));
+
+                            setIsEditingProfile(false);
+                            alert('Profil berhasil diperbarui!');
+                          }
+                        };
+                        saveUpdates();
                       }}
                       className="w-full py-2 bg-[#346739] hover:bg-[#284f2c] text-[#FFFDEB] rounded-lg text-xs font-black transition-all cursor-pointer shadow-sm text-center"
                     >
@@ -1397,7 +2423,7 @@ export default function HomePage() {
           {/* Center Floating Plus Button */}
           <div className="flex items-center justify-center relative">
             <button 
-              onClick={() => setIsDrawerOpen(true)}
+              onClick={openNewTransactionDrawer}
               className="absolute -top-5 h-14 w-14 rounded-full bg-[#346739] text-[#FFFDEB] border-4 border-[#FFFDEB] shadow-lg flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-all z-50 shadow-[#346739]/30"
               title="Tambah Transaksi Manual"
             >
@@ -1445,11 +2471,51 @@ export default function HomePage() {
           setIsScanning(false);
           setScanResult(null);
           setActiveStep('idle');
+          setCapturedImage(null); // Clear captured photo!
+          if (activeTab === 'scan' && scanInputType === 'camera') {
+            startCamera(); // Restart live stream!
+          }
         }}
         onConfirm={commitTransaction}
         newReceipt={scanResult?.scanData || null}
         matchedTx={matchedTx}
       />
+
+      {/* REGISTRATION SUCCESS VERIFICATION MODAL */}
+      {isRegSuccessModalOpen && (
+        <div className="absolute inset-0 bg-[#091413]/60 backdrop-blur-xs flex items-center justify-center p-5 z-[999] select-none animate-in fade-in duration-200">
+          <div className="bg-[#FFFDEB] rounded-2xl border border-[#346739]/10 p-6 w-full max-w-[280px] shadow-2xl flex flex-col items-center text-center space-y-4">
+            <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-600 animate-bounce">
+              <Mail className="h-6 w-6" />
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="font-extrabold text-sm text-[#091413]">Verifikasi Email</h3>
+              <p className="text-3xs text-slate-500 leading-relaxed font-semibold">
+                Registrasi berhasil! Silakan periksa kotak masuk email Anda untuk melakukan verifikasi akun:
+              </p>
+              <p className="text-3xs font-extrabold text-[#346739] break-all">
+                {regEmailSent}
+              </p>
+              <p className="text-[10px] text-slate-500 leading-relaxed font-semibold mt-2">
+                Hubungkan dengan Supabase atau lakukan verifikasi untuk melanjutkan.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsRegSuccessModalOpen(false);
+                setAuthStatus('login');
+                setAuthName('');
+              }}
+              className="w-full py-2 bg-[#346739] hover:bg-[#284f2c] text-[#FFFDEB] rounded-xl text-3xs font-extrabold shadow-md transition-all cursor-pointer"
+            >
+              Kembali ke Halaman Login
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* SIMULATED BOTTOM SHEET DRAWER (TAMBAH CATATAN) */}
       {isDrawerOpen && (
@@ -1457,7 +2523,20 @@ export default function HomePage() {
           {/* Backdrop inside phone */}
           <div 
             className="absolute inset-0 bg-[#091413]/50 backdrop-blur-xs transition-opacity duration-300"
-            onClick={() => setIsDrawerOpen(false)}
+            onClick={() => {
+              setIsDrawerOpen(false);
+              setDrawerMode('create');
+              setEditingTransactionId(null);
+              setManualDesc('');
+              setManualAmount('');
+              setCapturedImage(null);
+              setScanResult(null);
+              setIsScanning(false);
+              setActiveStep('idle');
+              if (activeTab === 'scan' && scanInputType === 'camera') {
+                startCamera(); // Restart live stream!
+              }
+            }}
           />
           
           {/* Drawer content */}
@@ -1467,14 +2546,45 @@ export default function HomePage() {
             
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-extrabold text-sm text-[#091413]">Tambah Catatan</h3>
+              <h3 className="font-extrabold text-sm text-[#091413]">
+                {drawerMode === 'edit' ? 'Edit Catatan' : drawerMode === 'scan_review' ? 'Tinjau Hasil Scan AI' : 'Tambah Catatan'}
+              </h3>
               <button
-                onClick={() => setIsDrawerOpen(false)}
+                onClick={() => {
+                  setIsDrawerOpen(false);
+                  setDrawerMode('create');
+                  setEditingTransactionId(null);
+                  setManualDesc('');
+                  setManualAmount('');
+                  setCapturedImage(null);
+                  setScanResult(null);
+                  setIsScanning(false);
+                  setActiveStep('idle');
+                  if (activeTab === 'scan' && scanInputType === 'camera') {
+                    startCamera(); // Restart live stream!
+                  }
+                }}
                 className="p-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-[#091413] transition-colors cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
+
+            {/* Scanning Review Info Badge */}
+            {drawerMode === 'scan_review' && (
+              <div className="mb-3.5 p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[9px] text-[#346739] flex items-center gap-1.5 font-bold animate-pulse">
+                <Sparkles className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                <span>Diisi otomatis oleh NaFi AI. Silakan tentukan Pemasukan/Pengeluaran & simpan!</span>
+              </div>
+            )}
+
+            {/* Edit Mode Info Badge */}
+            {drawerMode === 'edit' && (
+              <div className="mb-3.5 p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[9px] text-amber-800 flex items-center gap-1.5 font-bold">
+                <Pencil className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                <span>Mode Edit Transaksi. Silakan ubah rincian transaksi Anda.</span>
+              </div>
+            )}
 
             {/* Income / Expense Tabs */}
             <div className="bg-[#FBE8CE]/50 p-1 rounded-xl grid grid-cols-2 text-center text-xs font-bold border border-[#346739]/10 mb-4 shrink-0">
@@ -1535,6 +2645,16 @@ export default function HomePage() {
                     className="w-full px-3 py-2 bg-[#FBE8CE]/40 border border-[#346739]/20 rounded-xl text-[10px] text-[#091413] focus:outline-none focus:border-[#346739] transition-all font-mono font-bold"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="text-[8px] font-extrabold text-[#091413]/60 block mb-1 uppercase tracking-wider">Tanggal Transaksi</label>
+                <input
+                  type="date"
+                  required
+                  value={manualDate}
+                  onChange={(e) => setManualDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#FBE8CE]/40 border border-[#346739]/20 rounded-xl text-[10px] text-[#091413] focus:outline-none focus:border-[#346739] transition-all font-semibold"
+                />
               </div>
             </div>
 
@@ -1735,51 +2855,193 @@ export default function HomePage() {
               )}
             </div>
 
-            {/* Simpan Button */}
-            <button
-              onClick={() => {
-                if (!manualDesc || !manualAmount) {
-                  alert('Mohon isi Keterangan dan Nominal!');
-                  return;
-                }
-                const parsedVal = parseFloat(manualAmount);
-                if (isNaN(parsedVal) || parsedVal <= 0) {
-                  alert('Nominal harus berupa angka positif!');
-                  return;
-                }
-                
-                const isIncoming = drawerTab === 'pemasukan';
-                const newTx: Transaction = {
-                  id: `tx-manual-${Date.now()}`,
-                  userEmail: currentUser?.email || '',
-                  date: new Date().toISOString(),
-                  description: manualDesc,
-                  amount: isIncoming ? parsedVal : -parsedVal,
-                  type: isIncoming ? 'incoming' : 'outgoing',
-                  allocation: isIncoming ? null : manualAllocation,
-                  category: manualCategory,
-                  runningBalance: 0
-                };
+            {/* Action Buttons */}
+            <div className="flex gap-2.5 mt-3 shrink-0">
+              {(drawerMode === 'edit' || drawerMode === 'scan_review') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDrawerOpen(false);
+                    setDrawerMode('create');
+                    setEditingTransactionId(null);
+                    setManualDesc('');
+                    setManualAmount('');
+                    setCapturedImage(null);
+                    setScanResult(null);
+                    setIsScanning(false);
+                    setActiveStep('idle');
+                    if (activeTab === 'scan' && scanInputType === 'camera') {
+                      startCamera(); // Restart live stream!
+                    }
+                  }}
+                  className="flex-1 py-2.5 rounded-xl border border-[#346739]/30 text-[#091413]/70 font-extrabold text-xs hover:bg-slate-100 transition-all cursor-pointer"
+                >
+                  Batal
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  if (!manualDesc || !manualAmount) {
+                    alert('Mohon isi Keterangan dan Nominal!');
+                    return;
+                  }
+                  const parsedVal = parseFloat(manualAmount);
+                  if (isNaN(parsedVal) || parsedVal <= 0) {
+                    alert('Nominal harus berupa angka positif!');
+                    return;
+                  }
+                  
+                  const isIncoming = drawerTab === 'pemasukan';
 
-                setTransactions(prev => [...prev, newTx]);
-                
-                // If recording a Zakat transaction manually, check the Zakat milestone!
-                if (manualCategory === 'Zakat/Donasi' && parsedVal >= 100000) {
-                  setZakatPaid(true);
-                }
+                  if (drawerMode === 'edit' && editingTransactionId) {
+                    const dateStr = new Date(manualDate).toISOString();
+                    const executeUpdate = async () => {
+                      if (isSupabaseConfigured) {
+                        const dbUpdate = {
+                          date: dateStr,
+                          description: manualDesc,
+                          amount: isIncoming ? parsedVal : -parsedVal,
+                          type: isIncoming ? 'incoming' : 'outgoing',
+                          allocation: isIncoming ? null : manualAllocation,
+                          category: manualCategory
+                        };
+                        const { error } = await supabase
+                          .from('transactions')
+                          .update(dbUpdate)
+                          .eq('id', editingTransactionId);
+                        
+                        if (error) {
+                          console.error('Error updating transaction:', error);
+                          alert('Gagal mengubah di database Supabase: ' + error.message);
+                          return;
+                        }
+                      }
+                      
+                      setTransactions(prev => prev.map(t => {
+                        if (t.id === editingTransactionId) {
+                          return {
+                            ...t,
+                            date: dateStr,
+                            description: manualDesc,
+                            amount: isIncoming ? parsedVal : -parsedVal,
+                            type: isIncoming ? 'incoming' : 'outgoing',
+                            allocation: isIncoming ? null : manualAllocation,
+                            category: manualCategory
+                          };
+                        }
+                        return t;
+                      }));
+                      setEditingTransactionId(null);
+                      setDrawerMode('create');
+                      setIsDrawerOpen(false);
+                      setManualDesc('');
+                      setManualAmount('');
+                      setCurrentAdvice(`Berhasil memperbarui transaksi "${manualDesc}".`);
+                    };
 
-                setManualDesc('');
-                setManualAmount('');
-                setIsDrawerOpen(false);
+                    executeUpdate();
+                    return;
+                  }
 
-                setCurrentAdvice(
-                  `Berhasil mencatat "${manualDesc}" secara manual sebesar IDR ${parsedVal.toLocaleString('id-ID')} pada kategori ${manualCategory}.`
-                );
-              }}
-              className="w-full py-2.5 rounded-xl bg-[#346739] text-[#FFFDEB] font-extrabold text-xs shadow-md shadow-[#346739]/15 hover:bg-[#284f2c] transition-all cursor-pointer mt-3"
-            >
-              Simpan Catatan
-            </button>
+                  if (drawerMode === 'scan_review') {
+                    // Duplicate check using the reviewed manualDate!
+                    const receiptTime = new Date(manualDate).getTime();
+                    const match = transactions.find((tx) => {
+                      const txTime = new Date(tx.date).getTime();
+                      const timeDiffMins = Math.abs(txTime - receiptTime) / (1000 * 60);
+                      const sameAmount = Math.abs(tx.amount) === parsedVal;
+                      const sameMerchant = tx.description.toLowerCase().includes(manualDesc.toLowerCase()) || 
+                                           manualDesc.toLowerCase().includes(tx.description.toLowerCase());
+                      return timeDiffMins <= 10 && sameAmount && sameMerchant;
+                    });
+
+                    if (match) {
+                      setMatchedTx(match);
+                      setIsDupModalOpen(true);
+                      return;
+                    }
+
+                    commitTransaction();
+                    return;
+                  }
+
+                  // Default drawerMode === 'create'
+                  const executeCreate = async () => {
+                    const dateStr = new Date(manualDate).toISOString();
+                    if (isSupabaseConfigured && currentUser?.id) {
+                      const dbTx = {
+                        user_id: currentUser.id,
+                        date: dateStr,
+                        description: manualDesc,
+                        amount: isIncoming ? parsedVal : -parsedVal,
+                        type: isIncoming ? 'incoming' : 'outgoing',
+                        allocation: isIncoming ? null : manualAllocation,
+                        category: manualCategory
+                      };
+
+                      const { data, error } = await supabase
+                        .from('transactions')
+                        .insert([dbTx])
+                        .select()
+                        .single();
+
+                      if (error) {
+                        console.error('Error creating transaction:', error);
+                        alert('Gagal menyimpan ke database Supabase: ' + error.message);
+                        return;
+                      }
+
+                      if (data) {
+                        const newTx: Transaction = {
+                          id: data.id,
+                          date: data.date,
+                          description: data.description,
+                          amount: parseFloat(data.amount as string),
+                          type: data.type as 'incoming' | 'outgoing',
+                          allocation: data.allocation as AllocationType | null,
+                          category: data.category,
+                          runningBalance: 0,
+                          userEmail: currentUser?.email
+                        };
+                        setTransactions(prev => [...prev, newTx]);
+                      }
+                    } else {
+                      const newTx: Transaction = {
+                        id: `tx-manual-${Date.now()}`,
+                        userEmail: currentUser?.email || '',
+                        date: dateStr,
+                        description: manualDesc,
+                        amount: isIncoming ? parsedVal : -parsedVal,
+                        type: isIncoming ? 'incoming' : 'outgoing',
+                        allocation: isIncoming ? null : manualAllocation,
+                        category: manualCategory,
+                        runningBalance: 0
+                      };
+                      setTransactions(prev => [...prev, newTx]);
+                    }
+
+                    // If recording a Zakat transaction manually, check the Zakat milestone!
+                    if (manualCategory === 'Zakat/Donasi' && parsedVal >= 100000) {
+                      setZakatPaid(true);
+                    }
+
+                    setManualDesc('');
+                    setManualAmount('');
+                    setIsDrawerOpen(false);
+                    setDrawerMode('create');
+
+                    setCurrentAdvice(
+                      `Berhasil mencatat "${manualDesc}" secara manual sebesar IDR ${parsedVal.toLocaleString('id-ID')} pada kategori ${manualCategory}.`
+                    );
+                  };
+
+                  executeCreate();
+                }}
+                className={`${(drawerMode === 'edit' || drawerMode === 'scan_review') ? 'flex-1' : 'w-full'} py-2.5 rounded-xl bg-[#346739] text-[#FFFDEB] font-extrabold text-xs shadow-md shadow-[#346739]/15 hover:bg-[#284f2c] transition-all cursor-pointer`}
+              >
+                {drawerMode === 'edit' ? 'Simpan Perubahan' : drawerMode === 'scan_review' ? 'Simpan Hasil Scan' : 'Simpan Catatan'}
+              </button>
+            </div>
 
           </div>
         </div>
