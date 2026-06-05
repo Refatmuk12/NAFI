@@ -114,7 +114,6 @@ export default function EStatementGenerator({ transactions }: EStatementGenerato
       ['LAPORAN MUTASI REKENING DIGITAL - NaFi'],
       ['Nama Pemilik / Name', 'REFAT MUKMIN'],
       ['Nomor Rekening / Account', '1290013729625'],
-      ['Cabang / Branch', 'KCP NaFi Plz Kramat Jati Indah'],
       ['Periode Mutasi / Period', periodText],
       ['Tanggal Cetak / Printed On', new Date().toLocaleDateString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit' })],
       [],
@@ -208,8 +207,8 @@ export default function EStatementGenerator({ transactions }: EStatementGenerato
         id="statement-print-area"
         className="flex-1 bg-white rounded-lg p-3.5 border border-slate-200 overflow-y-auto max-h-[260px] text-[8px] font-sans text-slate-800 shadow-inner"
       >
-        {/* Blue Bank Header Banner (Matches Image) */}
-        <div className="bg-[#005CA9] text-white p-3.5 flex justify-between items-center rounded-t-md mb-4 relative overflow-hidden">
+        {/* Green Bank Header Banner (Matches Theme) */}
+        <div className="bg-[#346739] text-white p-3.5 flex justify-between items-center rounded-t-md mb-4 relative overflow-hidden">
           <div className="space-y-0.5 z-10">
             <h1 className="text-sm font-black italic tracking-wide text-white leading-none">E-STATEMENT</h1>
             <p className="text-[6px] font-bold tracking-widest text-[#FFFDEB]/80 uppercase leading-none">PLATFORM KEUANGAN CERDAS NAFI</p>
@@ -232,13 +231,6 @@ export default function EStatementGenerator({ transactions }: EStatementGenerato
                 <td className="font-extrabold text-[8px] py-0.5 w-[70px]">NAMA/NAME</td>
                 <td className="py-0.5 w-[5px]">:</td>
                 <td className="font-bold uppercase py-0.5 text-slate-900">REFAT MUKMIN</td>
-              </tr>
-              <tr>
-                <td className="font-extrabold text-[8px] py-0.5">CABANG/BRANCH</td>
-                <td className="py-0.5">:</td>
-                <td className="font-bold py-0.5 text-slate-900 uppercase">
-                  KCP NaFi<br />Plz Kramat Jati Indah
-                </td>
               </tr>
             </tbody>
           </table>
@@ -265,7 +257,7 @@ export default function EStatementGenerator({ transactions }: EStatementGenerato
         <div className="grid grid-cols-2 gap-4 mb-4 items-start">
           {/* Left Column: Account Details */}
           <div>
-            <h3 className="text-[10px] font-black text-[#005CA9] tracking-wide mb-1.5">TABUNGAN NOW IDR</h3>
+            <h3 className="text-[10px] font-black text-[#346739] tracking-wide mb-1.5">TABUNGAN NOW IDR</h3>
             <table className="w-full text-left leading-relaxed text-slate-700">
               <tbody>
                 <tr>
@@ -305,8 +297,8 @@ export default function EStatementGenerator({ transactions }: EStatementGenerato
                   </td>
                 </tr>
                 <tr className="text-slate-950 font-black text-[9px]">
-                  <td className="py-1.5 font-black text-[#005CA9]">Saldo Akhir / <span className="italic">Closing Balance</span></td>
-                  <td className="py-1.5 text-right text-[#005CA9]">
+                  <td className="py-1.5 font-black text-[#346739]">Saldo Akhir / <span className="italic">Closing Balance</span></td>
+                  <td className="py-1.5 text-right text-[#346739]">
                     {closingBalance.toLocaleString('id-ID', { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
