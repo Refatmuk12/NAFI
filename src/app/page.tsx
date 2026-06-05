@@ -58,9 +58,6 @@ import EStatementGenerator from '@/components/EStatementGenerator';
 import MobileSimulatorFrame from '@/components/MobileSimulatorFrame';
 
 export default function HomePage() {
-  // Mobile Simulator mode
-  const [isWideView, setIsWideView] = useState(false);
-
   // Authentication State
   const [authStatus, setAuthStatus] = useState<'login' | 'register' | 'authenticated'>('login');
   const [registeredUsers, setRegisteredUsers] = useState([
@@ -1041,7 +1038,7 @@ export default function HomePage() {
   };
 
   return (
-    <MobileSimulatorFrame isWideView={isWideView} setIsWideView={setIsWideView}>
+    <MobileSimulatorFrame>
       
       {/* Dynamic Screen Render */}
       {renderMobileContent()}
