@@ -137,3 +137,46 @@ body {
 .animate-slide-up {
   animation: slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Print-Specific Styles */
+@media print {
+  /* Hide all elements by default */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Make the statement container and its children visible */
+  #statement-print-area,
+  #statement-print-area * {
+    visibility: visible;
+  }
+  
+  /* Format print area for paper print output */
+  #statement-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+    color: #0f172a !important;
+    border: none !important;
+    padding: 24px !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* Force background colors to print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide print buttons and selects on paper */
+  .no-print {
+    display: none !important;
+  }
+}
