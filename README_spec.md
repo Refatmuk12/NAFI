@@ -9,7 +9,7 @@ NaFi adalah platform manajemen keuangan pribadi pintar (*smart personal financia
 * **Arsitektur Database Syariah & RLS:** Keamanan tingkat tinggi menggunakan Supabase Auth, JWT, dan Row Level Security (RLS) di tingkat tabel PostgreSQL.
 
 ## 🛠️ Tech Stack
-* **Frontend:** Next.js 14/15 (App Router) & React
+* **Frontend:** Next.js 14 (App Router) & React
 * **Styling:** Tailwind CSS & Shadcn.UI
 * **Backend:** Next.js API Routes & Supabase Edge Functions
 * **Database:** Supabase PostgreSQL
@@ -24,23 +24,3 @@ NaFi adalah platform manajemen keuangan pribadi pintar (*smart personal financia
 * `Compliance.md` - Kepatuhan terhadap standar akuntansi, regulasi nasional, dan prinsip keterbukaan.
 * `Security.md` - Kebijakan enkripsi, otentikasi, dan Row Level Security (RLS).
 * `Dev_Guide.md` - Panduan instalasi lokal, standarisasi kode, dan alur kontribusi.
-
----
-
-## 💻 Memulai Pengembangan Lokal (Getting Started)
-
-Pertama, jalankan server pengembangan:
-
-```bash
-npm run dev
-# atau
-yarn dev
-# atau
-pnpm dev
-# atau
-bun dev
-```
-
-Buka [http://localhost:3000](http://localhost:3000) dengan peramban (browser) Anda untuk melihat hasilnya.
-
-Anda dapat mulai mengedit halaman dengan memodifikasi `src/app/page.tsx`. Halaman tersebut akan terbarui secara otomatis saat Anda menyimpan berkas tersebut.

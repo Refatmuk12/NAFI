@@ -1,0 +1,13 @@
+# Supabase configuration file for local development
+
+project_id = "nafi-platform"
+
+[api]
+port = 54321
+schemas = ["public"]
+
+[db]
+port = 54322
+
+[studio]
+port = 54323
