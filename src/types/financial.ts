@@ -25,6 +25,7 @@ export interface Transaction {
   allocation: AllocationType | null; // null for income/uncategorized
   category: string;
   runningBalance: number;
+  userEmail?: string;
 }
 
 export type AgentStep = 'idle' | 'gemini' | 'claude' | 'gpt' | 'completed' | 'failed';

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Compass, 
   Database, 
@@ -61,7 +61,14 @@ export default function HomePage() {
   // Authentication State
   const [authStatus, setAuthStatus] = useState<'login' | 'register' | 'authenticated'>('login');
   const [registeredUsers, setRegisteredUsers] = useState([
-    { name: 'Refat Mukmin', email: 'refat@nafi.com', password: 'password123' }
+    { 
+      name: 'Refat Mukmin', 
+      email: 'refat@nafi.com', 
+      password: 'password123',
+      phone: '',
+      address: '',
+      avatar: null as string | null
+    }
   ]);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -111,8 +118,8 @@ export default function HomePage() {
   // Profile Settings State
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileName, setProfileName] = useState('');
-  const [profilePhone, setProfilePhone] = useState('081234567890');
-  const [profileAddress, setProfileAddress] = useState('Jl. Jenderal Sudirman No. 12, Jakarta');
+  const [profilePhone, setProfilePhone] = useState('');
+  const [profileAddress, setProfileAddress] = useState('');
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
   const [profilePassword, setProfilePassword] = useState('');
   const [profileEmail, setProfileEmail] = useState('');
@@ -125,17 +132,27 @@ export default function HomePage() {
   // Sync profile details when currentUser changes
   useEffect(() => {
     if (currentUser) {
-      setProfileName(currentUser.name);
-      setProfileEmail(currentUser.email);
+      const regUser = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
+      if (regUser) {
+        setProfileName(regUser.name);
+        setProfileEmail(regUser.email);
+        setProfilePhone(regUser.phone || '');
+        setProfileAddress(regUser.address || '');
+        setProfileAvatar(regUser.avatar || null);
+        setProfilePassword(regUser.password);
+      }
       setIsEmailVerified(true);
       setIsVerifyingEmail(false);
       setOtpInput('');
       setVerificationError('');
       setVerificationSuccess('');
-      const regUser = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
-      if (regUser) {
-        setProfilePassword(regUser.password);
-      }
+    } else {
+      setProfileName('');
+      setProfileEmail('');
+      setProfilePhone('');
+      setProfileAddress('');
+      setProfileAvatar(null);
+      setProfilePassword('');
     }
   }, [currentUser]);
 
@@ -144,18 +161,34 @@ export default function HomePage() {
   const [nextPrayerCountdown, setNextPrayerCountdown] = useState<string>('');
   const [nextPrayerName, setNextPrayerName] = useState<string>('');
 
-  // Recalculate running balance and verify chronological audit trail
+  // Recalculate running balance and verify chronological audit trail independently for each user
   useEffect(() => {
-    let balance = 0;
-    const sorted = [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    const updated = sorted.map(tx => {
-      balance += tx.amount;
-      return { ...tx, runningBalance: balance };
+    // Group transactions by userEmail to compute balances independently
+    const userGroups: { [email: string]: Transaction[] } = {};
+    transactions.forEach(tx => {
+      const email = (tx.userEmail || '').toLowerCase();
+      if (!userGroups[email]) userGroups[email] = [];
+      userGroups[email].push(tx);
     });
-    
-    const hasChanged = JSON.stringify(updated) !== JSON.stringify(transactions);
-    if (hasChanged) {
-      setTransactions(updated);
+
+    let hasChanged = false;
+    const updatedTransactions: Transaction[] = [];
+
+    Object.keys(userGroups).forEach(email => {
+      let balance = 0;
+      const sorted = [...userGroups[email]].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      const updated = sorted.map(tx => {
+        balance += tx.amount;
+        if (tx.runningBalance !== balance) {
+          hasChanged = true;
+        }
+        return { ...tx, runningBalance: balance };
+      });
+      updatedTransactions.push(...updated);
+    });
+
+    if (hasChanged || updatedTransactions.length !== transactions.length) {
+      setTransactions(updatedTransactions);
     }
   }, [transactions]);
 
@@ -251,7 +284,14 @@ export default function HomePage() {
     }
 
     // Add new user credentials
-    const newUser = { name: authName, email: authEmail, password: authPassword };
+    const newUser = { 
+      name: authName, 
+      email: authEmail, 
+      password: authPassword,
+      phone: '',
+      address: '',
+      avatar: null
+    };
     setRegisteredUsers(prev => [...prev, newUser]);
     
     // Auto-login or redirect
@@ -272,15 +312,21 @@ export default function HomePage() {
     setAuthPassword('');
   };
 
+  // Filter transactions by the current user's email to ensure complete data isolation
+  const userTransactions = useMemo(() => {
+    if (!currentUser) return [];
+    return transactions.filter(t => t.userEmail?.toLowerCase() === currentUser.email.toLowerCase());
+  }, [transactions, currentUser]);
+
   // Financial Statistics
-  const totalBalance = transactions.length > 0 ? transactions[transactions.length - 1].runningBalance : 0;
-  const totalIncome = transactions.filter(t => t.type === 'incoming').reduce((sum, t) => sum + t.amount, 0);
-  const totalExpenses = transactions.filter(t => t.type === 'outgoing').reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const totalBalance = userTransactions.length > 0 ? userTransactions[userTransactions.length - 1].runningBalance : 0;
+  const totalIncome = userTransactions.filter(t => t.type === 'incoming').reduce((sum, t) => sum + t.amount, 0);
+  const totalExpenses = userTransactions.filter(t => t.type === 'outgoing').reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
   const expensesByAllocation = {
-    primer: transactions.filter(t => t.allocation === 'primer').reduce((sum, t) => sum + Math.abs(t.amount), 0),
-    sekunder: transactions.filter(t => t.allocation === 'sekunder').reduce((sum, t) => sum + Math.abs(t.amount), 0),
-    investasi: transactions.filter(t => t.allocation === 'investasi').reduce((sum, t) => sum + Math.abs(t.amount), 0),
+    primer: userTransactions.filter(t => t.allocation === 'primer').reduce((sum, t) => sum + Math.abs(t.amount), 0),
+    sekunder: userTransactions.filter(t => t.allocation === 'sekunder').reduce((sum, t) => sum + Math.abs(t.amount), 0),
+    investasi: userTransactions.filter(t => t.allocation === 'investasi').reduce((sum, t) => sum + Math.abs(t.amount), 0),
   };
 
   const expensePercentages = {
@@ -351,6 +397,7 @@ export default function HomePage() {
 
     const newTx: Transaction = {
       id: `tx-${Date.now()}`,
+      userEmail: currentUser?.email || '',
       date: scanResult.scanData.date,
       description: scanResult.scanData.merchantName,
       amount: -scanResult.scanData.totalAmount,
@@ -375,7 +422,7 @@ export default function HomePage() {
   };
 
   // Filter & Search ledger
-  const filteredTransactions = transactions
+  const filteredTransactions = userTransactions
     .filter(t => {
       const matchesSearch = t.description.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             t.category.toLowerCase().includes(searchQuery.toLowerCase());
@@ -675,6 +722,7 @@ export default function HomePage() {
                       if (!zakatPaid) {
                         const newTx: Transaction = {
                           id: `tx-zakat-${Date.now()}`,
+                          userEmail: currentUser?.email || '',
                           date: new Date().toISOString(),
                           description: 'Sedekah Bulanan Wajib (NaFi Reminder)',
                           amount: -100000,
@@ -686,7 +734,7 @@ export default function HomePage() {
                         setTransactions(prev => [...prev, newTx]);
                         setCurrentAdvice('Alhamdulillah, sedekah bulanan Anda sebesar IDR 100.000 telah tercatat dan dibayarkan. Semoga berkah.');
                       } else {
-                        setTransactions(prev => prev.filter(t => t.description !== 'Sedekah Bulanan Wajib (NaFi Reminder)'));
+                        setTransactions(prev => prev.filter(t => t.description !== 'Sedekah Bulanan Wajib (NaFi Reminder)' || t.userEmail?.toLowerCase() !== currentUser?.email?.toLowerCase()));
                       }
                     }}
                     className={`h-5 w-5 rounded-lg border flex items-center justify-center transition-all cursor-pointer ${
@@ -885,7 +933,7 @@ export default function HomePage() {
               
               {/* E-Statement Downloader widget */}
               <EStatementGenerator 
-                transactions={transactions} 
+                transactions={userTransactions} 
                 userName={currentUser?.name}
               />
 
@@ -1279,7 +1327,10 @@ export default function HomePage() {
                                 ...u,
                                 name: profileName,
                                 email: profileEmail,
-                                password: profilePassword
+                                password: profilePassword,
+                                phone: profilePhone,
+                                address: profileAddress,
+                                avatar: profileAvatar
                               };
                             }
                             return u;
@@ -1700,6 +1751,7 @@ export default function HomePage() {
                 const isIncoming = drawerTab === 'pemasukan';
                 const newTx: Transaction = {
                   id: `tx-manual-${Date.now()}`,
+                  userEmail: currentUser?.email || '',
                   date: new Date().toISOString(),
                   description: manualDesc,
                   amount: isIncoming ? parsedVal : -parsedVal,
