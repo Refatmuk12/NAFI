@@ -28,7 +28,26 @@ import {
   TrendingUp,
   FileText,
   Clock,
-  MapPin
+  MapPin,
+  Briefcase,
+  Building2,
+  Gamepad2,
+  ShoppingBag,
+  Trophy,
+  Utensils,
+  Bus,
+  Activity,
+  GraduationCap,
+  Coffee,
+  CreditCard,
+  Heart,
+  Shield,
+  Gift,
+  X,
+  Check,
+  Star,
+  Zap,
+  Home
 } from 'lucide-react';
 
 import { Transaction, ReceiptScanResult, AllocationType } from '@/types/financial';
@@ -75,11 +94,13 @@ export default function HomePage() {
   } | null>(null);
 
   // Manual Transaction Form State
-  const [showAddManual, setShowAddManual] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<'pengeluaran' | 'pemasukan'>('pengeluaran');
   const [manualDesc, setManualDesc] = useState('');
   const [manualAmount, setManualAmount] = useState('');
-  const [manualAllocation, setManualAllocation] = useState<AllocationType>('primer');
-  const [manualCategory, setManualCategory] = useState('');
+  const [manualAllocation, setManualAllocation] = useState<AllocationType | null>('primer');
+  const [manualCategory, setManualCategory] = useState('Makan & Minum');
+  const [zakatPaid, setZakatPaid] = useState(false);
 
   // Duplicate Warning Modal State
   const [isDupModalOpen, setIsDupModalOpen] = useState(false);
@@ -315,39 +336,7 @@ export default function HomePage() {
     setActiveTab('dashboard'); // Direct user back to dashboard to see results
   };
 
-  const handleAddManualTransaction = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!manualDesc || !manualAmount) return;
 
-    const parsedAmount = parseFloat(manualAmount);
-    if (isNaN(parsedAmount)) return;
-
-    const isIncoming = parsedAmount > 0;
-
-    const newTx: Transaction = {
-      id: `tx-${Date.now()}`,
-      date: new Date().toISOString(),
-      description: manualDesc,
-      amount: isIncoming ? parsedAmount : -Math.abs(parsedAmount),
-      type: isIncoming ? 'incoming' : 'outgoing',
-      allocation: isIncoming ? null : manualAllocation,
-      category: manualCategory || (isIncoming ? 'Pendapatan' : 'Manual'),
-      runningBalance: 0
-    };
-
-    setTransactions(prev => [...prev, newTx]);
-    
-    setManualDesc('');
-    setManualAmount('');
-    setManualCategory('');
-    setShowAddManual(false);
-
-    if (!isIncoming) {
-      setCurrentAdvice(
-        `Catatan manual "${manualDesc}" tersimpan. Alokasi diatur sebagai ${manualAllocation.toUpperCase()} sebesar IDR ${parsedAmount.toLocaleString('id-ID')}.`
-      );
-    }
-  };
 
   const handleDeleteTransaction = (id: string) => {
     setTransactions(prev => prev.filter(t => t.id !== id));
@@ -569,31 +558,31 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Jadwal Sholat Widget */}
-              <div className="organic-card rounded-2xl p-4 bg-[#FBE8CE]/60 border border-[#346739]/15 space-y-3">
+              {/* Jadwal Sholat Widget (Refined & Shrunk with Gradient) */}
+              <div className="organic-card rounded-2xl p-3 bg-sholat-gradient text-[#FFFDEB] space-y-2.5 shadow-lg shadow-[#091413]/30">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-[#346739]">
-                    <Clock className="h-4 w-4" />
-                    <span className="text-3xs font-black uppercase tracking-wider">JADWAL SHOLAT & REMINDER</span>
+                  <div className="flex items-center gap-1 text-[#FFFDEB]/95">
+                    <Clock className="h-3.5 w-3.5 text-emerald-300" />
+                    <span className="text-[9px] font-bold tracking-wider uppercase">PENGINGAT WAKTU SHOLAT</span>
                   </div>
-                  <div className="flex items-center gap-1 text-[9px] text-[#091413]/70 font-semibold">
-                    <MapPin className="h-3 w-3 text-[#346739]" />
-                    <span>Depok, Jabar</span>
+                  <div className="flex items-center gap-1 text-[8px] text-[#FFFDEB]/80 font-medium">
+                    <MapPin className="h-2.5 w-2.5 text-emerald-300" />
+                    <span>Depok</span>
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center bg-[#FFFDEB] p-3 rounded-xl border border-[#346739]/10">
+                <div className="flex justify-between items-center bg-[#091413]/40 p-2 rounded-xl border border-white/5">
                   <div className="space-y-0.5">
-                    <div className="text-2xs font-bold text-slate-500">WAKTU SEKARANG</div>
-                    <div className="text-xl font-extrabold text-[#091413] tracking-tight font-mono">
+                    <div className="text-[8px] text-emerald-200/70 font-semibold uppercase tracking-wider">JAM LOKAL</div>
+                    <div className="text-base font-extrabold tracking-tight font-mono text-emerald-50">
                       {currentDateTime ? currentDateTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--:--'}
                     </div>
                   </div>
                   <div className="text-right space-y-0.5">
-                    <div className="text-3xs font-extrabold text-amber-700 bg-amber-500/10 px-2 py-0.5 rounded-full inline-block border border-amber-500/20">
-                      NEXT: {nextPrayerName}
+                    <div className="text-[8px] font-extrabold text-amber-200 bg-amber-500/20 px-2 py-0.5 rounded-full inline-block border border-amber-500/30 uppercase tracking-widest font-mono">
+                      {nextPrayerName}
                     </div>
-                    <div className="text-xs font-black text-[#346739] tracking-tight font-mono">
+                    <div className="text-xs font-black text-amber-300 tracking-tight font-mono">
                       {nextPrayerCountdown ? `-${nextPrayerCountdown}` : '--'}
                     </div>
                   </div>
@@ -612,17 +601,66 @@ export default function HomePage() {
                     return (
                       <div 
                         key={p.name} 
-                        className={`p-1.5 rounded-lg border transition-all ${
+                        className={`py-1 rounded-md transition-all ${
                           isNext 
-                            ? 'bg-[#346739] text-[#FFFDEB] border-[#346739] font-bold shadow-md shadow-[#346739]/10 scale-105' 
-                            : 'bg-[#FFFDEB] text-[#091413]/60 border-[#346739]/10 text-3xs font-semibold'
+                            ? 'bg-[#FFFDEB] text-[#346739] font-black border border-[#FFFDEB] shadow-md shadow-[#FFFDEB]/5 scale-102' 
+                            : 'bg-[#091413]/30 text-[#FFFDEB]/60 border border-white/5 text-[8px] font-medium'
                         }`}
                       >
-                        <div className="text-[8px] uppercase tracking-wider block opacity-80">{p.name}</div>
-                        <div className="text-[10px] font-bold mt-0.5">{p.time}</div>
+                        <div className="text-[7px] uppercase tracking-wider block opacity-75">{p.name}</div>
+                        <div className="text-[9px] font-bold mt-0.5">{p.time}</div>
                       </div>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* Zakat & Sedekah Milestone Widget */}
+              <div className="organic-card rounded-2xl p-3 bg-[#FBE8CE]/50 border border-[#346739]/10 flex items-center justify-between shadow-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className={`p-2 rounded-xl border transition-all ${
+                    zakatPaid 
+                      ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20' 
+                      : 'bg-amber-500/10 text-amber-700 border-amber-500/20'
+                  }`}>
+                    <Heart className={`h-4 w-4 ${zakatPaid ? 'fill-emerald-700' : ''}`} />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-[10px] text-[#091413]">Sedekah & Zakat Bulanan</h4>
+                    <p className="text-[8px] text-slate-500 mt-0.5">
+                      {zakatPaid ? 'Pilar Syariah Terpenuhi (Lunas)' : 'Reminder Wajib Awal Bulan (Min. Rp100k)'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center">
+                  <button
+                    onClick={() => {
+                      setZakatPaid(!zakatPaid);
+                      if (!zakatPaid) {
+                        const newTx: Transaction = {
+                          id: `tx-zakat-${Date.now()}`,
+                          date: new Date().toISOString(),
+                          description: 'Sedekah Bulanan Wajib (NaFi Reminder)',
+                          amount: -100000,
+                          type: 'outgoing',
+                          allocation: 'primer',
+                          category: 'Zakat/Donasi',
+                          runningBalance: 0
+                        };
+                        setTransactions(prev => [...prev, newTx]);
+                        setCurrentAdvice('Alhamdulillah, sedekah bulanan Anda sebesar IDR 100.000 telah tercatat dan dibayarkan. Semoga berkah.');
+                      } else {
+                        setTransactions(prev => prev.filter(t => t.description !== 'Sedekah Bulanan Wajib (NaFi Reminder)'));
+                      }
+                    }}
+                    className={`h-5 w-5 rounded-lg border flex items-center justify-center transition-all cursor-pointer ${
+                      zakatPaid 
+                        ? 'bg-[#346739] border-[#346739] text-[#FFFDEB] shadow-md shadow-[#346739]/15' 
+                        : 'bg-[#FFFDEB] border-[#346739]/30 hover:border-[#346739]'
+                    }`}
+                  >
+                    {zakatPaid && <Check className="h-3 w-3 stroke-[3.5]" />}
+                  </button>
                 </div>
               </div>
 
@@ -819,56 +857,7 @@ export default function HomePage() {
               <div className="organic-card rounded-xl p-4 bg-[#FBE8CE]/50 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-3xs font-extrabold text-[#091413] uppercase tracking-wider">Jurnal Transaksi</span>
-                  
-                  {/* Manual entry toggle */}
-                  <button
-                    onClick={() => setShowAddManual(!showAddManual)}
-                    className="p-1 rounded bg-[#346739]/10 border border-[#346739]/20 text-[#346739] text-3xs font-bold"
-                  >
-                    {showAddManual ? 'Batal' : 'Manual'}
-                  </button>
                 </div>
-
-                {/* Manual entry form */}
-                {showAddManual && (
-                  <form onSubmit={handleAddManualTransaction} className="p-3 bg-[#FFFDEB] rounded-lg border border-[#346739]/15 space-y-2 animate-in slide-in-from-top-2 duration-150">
-                    <div className="text-3xs font-extrabold text-[#346739] border-b border-[#346739]/10 pb-0.5">CATATAN MANUAL</div>
-                    <input 
-                      type="text" 
-                      required
-                      placeholder="Nama Merchant / Gaji"
-                      value={manualDesc}
-                      onChange={(e) => setManualDesc(e.target.value)}
-                      className="w-full px-2 py-1 bg-[#FFFDEB] border border-[#346739]/20 rounded text-3xs focus:outline-none focus:border-[#346739]"
-                    />
-                    <input 
-                      type="number" 
-                      required
-                      placeholder="Nominal (Minus jika Keluar)"
-                      value={manualAmount}
-                      onChange={(e) => setManualAmount(e.target.value)}
-                      className="w-full px-2 py-1 bg-[#FFFDEB] border border-[#346739]/20 rounded text-3xs focus:outline-none focus:border-[#346739]"
-                    />
-                    
-                    <div className="grid grid-cols-2 gap-2">
-                      <select
-                        value={manualAllocation}
-                        onChange={(e) => setManualAllocation(e.target.value as AllocationType)}
-                        className="px-2 py-1 bg-[#FFFDEB] border border-[#346739]/20 rounded text-3xs focus:outline-none"
-                      >
-                        <option value="primer">Primer (60%)</option>
-                        <option value="sekunder">Sekunder (20%)</option>
-                        <option value="investasi">Investasi (20%)</option>
-                      </select>
-                      <button
-                        type="submit"
-                        className="py-1 bg-[#346739] text-[#FFFDEB] rounded text-3xs font-extrabold cursor-pointer"
-                      >
-                        Simpan
-                      </button>
-                    </div>
-                  </form>
-                )}
 
                 {/* Filter and Search */}
                 <div className="space-y-2">
@@ -992,46 +981,57 @@ export default function HomePage() {
         </div>
 
         {/* MOBILE BOTTOM NAVIGATION BAR */}
-        <div className="h-16 bg-[#FBE8CE] border-t border-[#346739]/10 grid grid-cols-4 select-none z-40">
+        <div className="h-16 bg-[#FBE8CE] border-t border-[#346739]/10 grid grid-cols-5 select-none z-40 relative">
           
           <button 
             onClick={() => setActiveTab('dashboard')}
-            className={`flex flex-col items-center justify-center gap-1 cursor-pointer ${
+            className={`flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
               activeTab === 'dashboard' ? 'text-[#346739] font-black' : 'text-[#091413]/50 font-semibold'
             }`}
           >
             <Layers className="h-4.5 w-4.5" />
-            <span className="text-4xs">Dasbor</span>
-          </button>
-
-          <button 
-            onClick={() => setActiveTab('scan')}
-            className={`flex flex-col items-center justify-center gap-1 cursor-pointer ${
-              activeTab === 'scan' ? 'text-[#346739] font-black' : 'text-[#091413]/50 font-semibold'
-            }`}
-          >
-            <Scan className="h-4.5 w-4.5" />
-            <span className="text-4xs">Pindai AI</span>
+            <span className="text-[7px] uppercase font-bold tracking-wider">Beranda</span>
           </button>
 
           <button 
             onClick={() => setActiveTab('ledger')}
-            className={`flex flex-col items-center justify-center gap-1 cursor-pointer ${
+            className={`flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
               activeTab === 'ledger' ? 'text-[#346739] font-black' : 'text-[#091413]/50 font-semibold'
             }`}
           >
-            <FileText className="h-4.5 w-4.5" />
-            <span className="text-4xs">Mutasi</span>
+            <Clock className="h-4.5 w-4.5" />
+            <span className="text-[7px] uppercase font-bold tracking-wider">Riwayat</span>
+          </button>
+
+          {/* Center Floating Plus Button */}
+          <div className="flex items-center justify-center relative">
+            <button 
+              onClick={() => setIsDrawerOpen(true)}
+              className="absolute -top-5 h-14 w-14 rounded-full bg-[#346739] text-[#FFFDEB] border-4 border-[#FFFDEB] shadow-lg flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-all z-50 shadow-[#346739]/30"
+              title="Tambah Transaksi Manual"
+            >
+              <Plus className="h-6 w-6 stroke-[3.5]" />
+            </button>
+          </div>
+
+          <button 
+            onClick={() => setActiveTab('scan')}
+            className={`flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
+              activeTab === 'scan' ? 'text-[#346739] font-black' : 'text-[#091413]/50 font-semibold'
+            }`}
+          >
+            <Cpu className="h-4.5 w-4.5" />
+            <span className="text-[7px] uppercase font-bold tracking-wider">NaFi AI</span>
           </button>
 
           <button 
             onClick={() => setActiveTab('account')}
-            className={`flex flex-col items-center justify-center gap-1 cursor-pointer ${
+            className={`flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
               activeTab === 'account' ? 'text-[#346739] font-black' : 'text-[#091413]/50 font-semibold'
             }`}
           >
             <User className="h-4.5 w-4.5" />
-            <span className="text-4xs">Akun</span>
+            <span className="text-[7px] uppercase font-bold tracking-wider">Profil</span>
           </button>
 
         </div>
@@ -1059,6 +1059,339 @@ export default function HomePage() {
         newReceipt={scanResult?.scanData || null}
         matchedTx={matchedTx}
       />
+
+      {/* SIMULATED BOTTOM SHEET DRAWER (TAMBAH CATATAN) */}
+      {isDrawerOpen && (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end select-none">
+          {/* Backdrop inside phone */}
+          <div 
+            className="absolute inset-0 bg-[#091413]/50 backdrop-blur-xs transition-opacity duration-300"
+            onClick={() => setIsDrawerOpen(false)}
+          />
+          
+          {/* Drawer content */}
+          <div className="relative bg-[#FFFDEB] rounded-t-[32px] border-t border-[#346739]/15 p-5 flex flex-col max-h-[90%] overflow-y-auto animate-slide-up shadow-2xl z-50 text-[#091413]">
+            {/* Notch */}
+            <div className="mx-auto w-10 h-1 bg-[#091413]/10 rounded-full mb-3.5 shrink-0" />
+            
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-extrabold text-sm text-[#091413]">Tambah Catatan</h3>
+              <button
+                onClick={() => setIsDrawerOpen(false)}
+                className="p-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-[#091413] transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Income / Expense Tabs */}
+            <div className="bg-[#FBE8CE]/50 p-1 rounded-xl grid grid-cols-2 text-center text-xs font-bold border border-[#346739]/10 mb-4 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setDrawerTab('pengeluaran');
+                  setManualAllocation('primer');
+                  setManualCategory('Makan & Minum');
+                }}
+                className={`py-2 rounded-lg cursor-pointer transition-all ${
+                  drawerTab === 'pengeluaran' 
+                    ? 'bg-[#346739] text-[#FFFDEB] shadow-sm' 
+                    : 'text-[#091413]/60 hover:text-[#091413]'
+                }`}
+              >
+                Pengeluaran
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDrawerTab('pemasukan');
+                  setManualAllocation(null);
+                  setManualCategory('Gaji / Salary');
+                }}
+                className={`py-2 rounded-lg cursor-pointer transition-all ${
+                  drawerTab === 'pemasukan' 
+                    ? 'bg-[#346739] text-[#FFFDEB] shadow-sm' 
+                    : 'text-[#091413]/60 hover:text-[#091413]'
+                }`}
+              >
+                Pemasukan
+              </button>
+            </div>
+
+            {/* Inputs: Desc & Amount */}
+            <div className="space-y-3 mb-4 shrink-0">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[8px] font-extrabold text-[#091413]/60 block mb-1 uppercase tracking-wider">Keterangan</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: Makan Siang Warteg"
+                    value={manualDesc}
+                    onChange={(e) => setManualDesc(e.target.value)}
+                    className="w-full px-3 py-2 bg-[#FBE8CE]/40 border border-[#346739]/20 rounded-xl text-[10px] text-[#091413] placeholder-slate-400 focus:outline-none focus:border-[#346739] transition-all font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[8px] font-extrabold text-[#091413]/60 block mb-1 uppercase tracking-wider">Nominal (Rupiah)</label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="Contoh: 15000"
+                    value={manualAmount}
+                    onChange={(e) => setManualAmount(e.target.value)}
+                    className="w-full px-3 py-2 bg-[#FBE8CE]/40 border border-[#346739]/20 rounded-xl text-[10px] text-[#091413] focus:outline-none focus:border-[#346739] transition-all font-mono font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Categories Select */}
+            <div className="flex-1 overflow-y-auto max-h-[280px] pb-2">
+              {drawerTab === 'pemasukan' ? (
+                <div className="space-y-2">
+                  <span className="text-[8px] font-extrabold text-[#091413]/60 tracking-wider block uppercase">KATEGORI PEMASUKAN</span>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { name: 'Gaji / Salary', icon: Briefcase },
+                      { name: 'Freelance', icon: Star },
+                      { name: 'Bisnis', icon: Building2 },
+                      { name: 'Bonus / THR', icon: Zap },
+                      { name: 'Investasi', icon: TrendingUp },
+                      { name: 'Gift / Hadiah', icon: Gift },
+                      { name: 'Lain-lain', icon: Layers }
+                    ].map((cat) => {
+                      const isActive = manualCategory === cat.name;
+                      const Icon = cat.icon;
+                      return (
+                        <button
+                          key={cat.name}
+                          type="button"
+                          onClick={() => {
+                            setManualCategory(cat.name);
+                            setManualAllocation(null);
+                          }}
+                          className="flex flex-col items-center gap-1 p-1 rounded-xl hover:bg-slate-100/30 transition-all cursor-pointer group"
+                        >
+                          <div className={`h-11 w-11 rounded-2xl flex items-center justify-center transition-all ${
+                            isActive ? 'glass-icon-active text-[#346739] bg-[#346739]/10' : 'glass-icon text-slate-500'
+                          }`}>
+                            <Icon className="h-4.5 w-4.5" />
+                          </div>
+                          <span className={`text-[7px] text-center font-bold tracking-tight uppercase block leading-tight ${
+                            isActive ? 'text-[#346739]' : 'text-slate-500'
+                          }`}>
+                            {cat.name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Primer */}
+                  <div className="space-y-2">
+                    <span className="text-[8px] font-extrabold text-[#091413]/60 tracking-wider block uppercase">KEBUTUHAN PRIMER</span>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        { name: 'Makan & Minum', icon: Utensils, alloc: 'primer' as AllocationType },
+                        { name: 'Tempat Tinggal', icon: Home, alloc: 'primer' as AllocationType },
+                        { name: 'Transportasi', icon: Bus, alloc: 'primer' as AllocationType },
+                        { name: 'Kesehatan', icon: Activity, alloc: 'primer' as AllocationType },
+                        { name: 'Pendidikan', icon: GraduationCap, alloc: 'primer' as AllocationType }
+                      ].map((cat) => {
+                        const isActive = manualCategory === cat.name;
+                        const Icon = cat.icon;
+                        return (
+                          <button
+                            key={cat.name}
+                            type="button"
+                            onClick={() => {
+                              setManualCategory(cat.name);
+                              setManualAllocation(cat.alloc);
+                            }}
+                            className="flex flex-col items-center gap-1 p-1 rounded-xl hover:bg-slate-100/30 transition-all cursor-pointer group"
+                          >
+                            <div className={`h-11 w-11 rounded-2xl flex items-center justify-center transition-all ${
+                              isActive ? 'glass-icon-active text-[#346739] bg-[#346739]/10' : 'glass-icon text-slate-500'
+                            }`}>
+                              <Icon className="h-4.5 w-4.5" />
+                            </div>
+                            <span className={`text-[7px] text-center font-bold tracking-tight uppercase block leading-tight ${
+                              isActive ? 'text-[#346739]' : 'text-slate-500'
+                            }`}>
+                              {cat.name}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Sekunder */}
+                  <div className="space-y-2">
+                    <span className="text-[8px] font-extrabold text-[#091413]/60 tracking-wider block uppercase">KEBUTUHAN SEKUNDER</span>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        { name: 'Nongkrong/Cafe', icon: Coffee, alloc: 'sekunder' as AllocationType },
+                        { name: 'Hiburan', icon: Gamepad2, alloc: 'sekunder' as AllocationType },
+                        { name: 'Belanja', icon: ShoppingBag, alloc: 'sekunder' as AllocationType },
+                        { name: 'Hobi', icon: Trophy, alloc: 'sekunder' as AllocationType }
+                      ].map((cat) => {
+                        const isActive = manualCategory === cat.name;
+                        const Icon = cat.icon;
+                        return (
+                          <button
+                            key={cat.name}
+                            type="button"
+                            onClick={() => {
+                              setManualCategory(cat.name);
+                              setManualAllocation(cat.alloc);
+                            }}
+                            className="flex flex-col items-center gap-1 p-1 rounded-xl hover:bg-slate-100/30 transition-all cursor-pointer group"
+                          >
+                            <div className={`h-11 w-11 rounded-2xl flex items-center justify-center transition-all ${
+                              isActive ? 'glass-icon-active text-[#346739] bg-[#346739]/10' : 'glass-icon text-slate-500'
+                            }`}>
+                              <Icon className="h-4.5 w-4.5" />
+                            </div>
+                            <span className={`text-[7px] text-center font-bold tracking-tight uppercase block leading-tight ${
+                              isActive ? 'text-[#346739]' : 'text-slate-500'
+                            }`}>
+                              {cat.name}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Kewajiban */}
+                  <div className="space-y-2">
+                    <span className="text-[8px] font-extrabold text-[#091413]/60 tracking-wider block uppercase">KEWAJIBAN & CICILAN</span>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        { name: 'Cicilan', icon: CreditCard, alloc: 'primer' as AllocationType },
+                        { name: 'Zakat/Donasi', icon: Heart, alloc: 'primer' as AllocationType },
+                        { name: 'Pajak', icon: Shield, alloc: 'primer' as AllocationType }
+                      ].map((cat) => {
+                        const isActive = manualCategory === cat.name;
+                        const Icon = cat.icon;
+                        return (
+                          <button
+                            key={cat.name}
+                            type="button"
+                            onClick={() => {
+                              setManualCategory(cat.name);
+                              setManualAllocation(cat.alloc);
+                            }}
+                            className="flex flex-col items-center gap-1 p-1 rounded-xl hover:bg-slate-100/30 transition-all cursor-pointer group"
+                          >
+                            <div className={`h-11 w-11 rounded-2xl flex items-center justify-center transition-all ${
+                              isActive ? 'glass-icon-active text-[#346739] bg-[#346739]/10' : 'glass-icon text-slate-500'
+                            }`}>
+                              <Icon className="h-4.5 w-4.5" />
+                            </div>
+                            <span className={`text-[7px] text-center font-bold tracking-tight uppercase block leading-tight ${
+                              isActive ? 'text-[#346739]' : 'text-slate-500'
+                            }`}>
+                              {cat.name}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Investasi & Aset */}
+                  <div className="space-y-2">
+                    <span className="text-[8px] font-extrabold text-[#091413]/60 tracking-wider block uppercase">INVESTASI & ASET</span>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        { name: 'Aset/Saham', icon: TrendingUp, alloc: 'investasi' as AllocationType }
+                      ].map((cat) => {
+                        const isActive = manualCategory === cat.name;
+                        const Icon = cat.icon;
+                        return (
+                          <button
+                            key={cat.name}
+                            type="button"
+                            onClick={() => {
+                              setManualCategory(cat.name);
+                              setManualAllocation(cat.alloc);
+                            }}
+                            className="flex flex-col items-center gap-1 p-1 rounded-xl hover:bg-slate-100/30 transition-all cursor-pointer group"
+                          >
+                            <div className={`h-11 w-11 rounded-2xl flex items-center justify-center transition-all ${
+                              isActive ? 'glass-icon-active text-[#346739] bg-[#346739]/10' : 'glass-icon text-slate-500'
+                            }`}>
+                              <Icon className="h-4.5 w-4.5" />
+                            </div>
+                            <span className={`text-[7px] text-center font-bold tracking-tight uppercase block leading-tight ${
+                              isActive ? 'text-[#346739]' : 'text-slate-500'
+                            }`}>
+                              {cat.name}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                </div>
+              )}
+            </div>
+
+            {/* Simpan Button */}
+            <button
+              onClick={() => {
+                if (!manualDesc || !manualAmount) {
+                  alert('Mohon isi Keterangan dan Nominal!');
+                  return;
+                }
+                const parsedVal = parseFloat(manualAmount);
+                if (isNaN(parsedVal) || parsedVal <= 0) {
+                  alert('Nominal harus berupa angka positif!');
+                  return;
+                }
+                
+                const isIncoming = drawerTab === 'pemasukan';
+                const newTx: Transaction = {
+                  id: `tx-manual-${Date.now()}`,
+                  date: new Date().toISOString(),
+                  description: manualDesc,
+                  amount: isIncoming ? parsedVal : -parsedVal,
+                  type: isIncoming ? 'incoming' : 'outgoing',
+                  allocation: isIncoming ? null : manualAllocation,
+                  category: manualCategory,
+                  runningBalance: 0
+                };
+
+                setTransactions(prev => [...prev, newTx]);
+                
+                // If recording a Zakat transaction manually, check the Zakat milestone!
+                if (manualCategory === 'Zakat/Donasi' && parsedVal >= 100000) {
+                  setZakatPaid(true);
+                }
+
+                setManualDesc('');
+                setManualAmount('');
+                setIsDrawerOpen(false);
+
+                setCurrentAdvice(
+                  `Berhasil mencatat "${manualDesc}" secara manual sebesar IDR ${parsedVal.toLocaleString('id-ID')} pada kategori ${manualCategory}.`
+                );
+              }}
+              className="w-full py-2.5 rounded-xl bg-[#346739] text-[#FFFDEB] font-extrabold text-xs shadow-md shadow-[#346739]/15 hover:bg-[#284f2c] transition-all cursor-pointer mt-3"
+            >
+              Simpan Catatan
+            </button>
+
+          </div>
+        </div>
+      )}
 
     </MobileSimulatorFrame>
   );

@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Printer, User, CreditCard } from 'lucide-react';
+import { FileText, Printer, User, CreditCard, Download } from 'lucide-react';
 import { Transaction } from '@/types/financial';
 
 interface EStatementGeneratorProps {
@@ -19,6 +19,35 @@ export default function EStatementGenerator({ transactions, onDownload }: EState
     window.print();
   };
 
+  const handleDownloadExcel = () => {
+    // Generate CSV data matching Indonesian accounting format (comma separator)
+    const headers = ['Tanggal', 'Keterangan', 'Alokasi', 'Kategori', 'Debit (Masuk)', 'Kredit (Keluar)', 'Saldo Berjalan'];
+    const rows = sortedTx.map(tx => [
+      new Date(tx.date).toLocaleDateString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+      tx.description,
+      tx.allocation || '-',
+      tx.category,
+      tx.type === 'incoming' ? tx.amount : 0,
+      tx.type === 'outgoing' ? Math.abs(tx.amount) : 0,
+      tx.runningBalance
+    ]);
+    
+    // Create BOM for Excel UTF-8 support
+    const csvContent = "\uFEFF" + [
+      headers.join(','), 
+      ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+      
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Mutasi_NaFi_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="organic-card rounded-xl p-4 bg-[#FBE8CE]/40 border border-[#346739]/15 flex flex-col h-full text-[#091413]">
       <div className="flex items-center justify-between mb-4">
@@ -27,21 +56,34 @@ export default function EStatementGenerator({ transactions, onDownload }: EState
             <FileText className="h-4 w-4" />
           </div>
           <div>
-            <h3 className="font-extrabold text-xs text-[#091413]">Pembuat E-Statement</h3>
-            <p className="text-[9px] text-slate-500">Mutasi formal standar Bank Mandiri</p>
+            <h3 className="font-extrabold text-xs text-[#091413]">Unduh Mutasi Rekening</h3>
+            <p className="text-[9px] text-slate-500">Laporan formal terverifikasi RLS</p>
           </div>
         </div>
-        <button
-          onClick={handlePrint}
-          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#346739] hover:bg-[#284f2c] text-[#FFFDEB] text-[10px] font-bold transition-all shadow-md shadow-[#346739]/10"
-        >
-          <Printer className="h-3 w-3" />
-          Cetak PDF
-        </button>
+        
+        {/* Export Buttons */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleDownloadExcel}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#346739]/10 hover:bg-[#346739]/20 text-[#346739] border border-[#346739]/15 text-[9px] font-bold transition-all cursor-pointer"
+            title="Download CSV / Excel"
+          >
+            <Download className="h-2.5 w-2.5" />
+            Excel
+          </button>
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#346739] hover:bg-[#284f2c] text-[#FFFDEB] text-[9px] font-bold transition-all shadow-md shadow-[#346739]/10 cursor-pointer"
+            title="Print PDF"
+          >
+            <Printer className="h-2.5 w-2.5" />
+            PDF
+          </button>
+        </div>
       </div>
 
       {/* Statement Preview Container */}
-      <div className="flex-1 bg-[#FFFDEB] rounded-lg p-3 border border-[#346739]/15 overflow-y-auto max-h-[220px] text-[10px] font-mono text-[#091413] print:bg-white print:text-black">
+      <div className="flex-1 bg-[#FFFDEB] rounded-lg p-3 border border-[#346739]/15 overflow-y-auto max-h-[200px] text-[10px] font-mono text-[#091413] print:bg-white print:text-black">
         {/* Bank Header Logo */}
         <div className="flex justify-between items-start border-b border-[#346739]/20 pb-3 mb-3 print:border-slate-800">
           <div>
