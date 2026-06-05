@@ -63,8 +63,8 @@ export default function HomePage() {
   const [registeredUsers, setRegisteredUsers] = useState([
     { name: 'Refat Mukmin', email: 'refat@nafi.com', password: 'password123' }
   ]);
-  const [authEmail, setAuthEmail] = useState('refat@nafi.com');
-  const [authPassword, setAuthPassword] = useState('password123');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
   const [authError, setAuthError] = useState('');
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null);
@@ -230,11 +230,15 @@ export default function HomePage() {
     
     // Clear registration fields
     setAuthName('');
+    setAuthEmail('');
+    setAuthPassword('');
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
     setAuthStatus('login');
+    setAuthEmail('');
+    setAuthPassword('');
   };
 
   // Financial Statistics
@@ -416,6 +420,8 @@ export default function HomePage() {
               onClick={() => {
                 setAuthStatus('register');
                 setAuthError('');
+                setAuthEmail('');
+                setAuthPassword('');
               }}
               className="font-bold text-[#346739] hover:underline"
             >
@@ -502,6 +508,8 @@ export default function HomePage() {
               onClick={() => {
                 setAuthStatus('login');
                 setAuthError('');
+                setAuthEmail('');
+                setAuthPassword('');
               }}
               className="font-bold text-[#346739] hover:underline"
             >
