@@ -70,7 +70,7 @@ export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null);
 
   // Financial Data State
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'all' | AllocationType>('all');
   
@@ -107,6 +107,37 @@ export default function HomePage() {
   const [currentAdvice, setCurrentAdvice] = useState<string>(
     'NaFi AI Advisor siap membantu. Hubungkan struk belanja atau catat transaksi Anda untuk menerima saran alokasi dana syariah yang optimal.'
   );
+
+  // Profile Settings State
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [profilePhone, setProfilePhone] = useState('081234567890');
+  const [profileAddress, setProfileAddress] = useState('Jl. Jenderal Sudirman No. 12, Jakarta');
+  const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
+  const [profilePassword, setProfilePassword] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [isEmailVerified, setIsEmailVerified] = useState(true);
+  const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
+  const [otpInput, setOtpInput] = useState('');
+  const [verificationError, setVerificationError] = useState('');
+  const [verificationSuccess, setVerificationSuccess] = useState('');
+
+  // Sync profile details when currentUser changes
+  useEffect(() => {
+    if (currentUser) {
+      setProfileName(currentUser.name);
+      setProfileEmail(currentUser.email);
+      setIsEmailVerified(true);
+      setIsVerifyingEmail(false);
+      setOtpInput('');
+      setVerificationError('');
+      setVerificationSuccess('');
+      const regUser = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
+      if (regUser) {
+        setProfilePassword(regUser.password);
+      }
+    }
+  }, [currentUser]);
 
   // Sholat Reminder State
   const [currentDateTime, setCurrentDateTime] = useState<Date | null>(null);
@@ -895,43 +926,49 @@ export default function HomePage() {
 
                 {/* Scrolling transaction stack */}
                 <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                  {filteredTransactions.map((tx) => (
-                    <div 
-                      key={tx.id}
-                      className="flex items-center justify-between p-2.5 rounded-lg bg-[#FFFDEB] border border-[#346739]/5 font-mono text-3xs"
-                    >
-                      <div className="space-y-0.5">
-                        <div className="font-extrabold text-[#091413] truncate max-w-[130px]">{tx.description}</div>
-                        <div className="text-slate-400 text-3xs">
-                          {new Date(tx.date).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit' })}
-                          {' • '}
-                          <span className={`capitalize font-bold ${
-                            tx.allocation === 'primer' ? 'text-sky-700' : tx.allocation === 'sekunder' ? 'text-purple-700' : 'text-emerald-700'
-                          }`}>{tx.allocation || 'Pendapatan'}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <div className="text-right">
-                          <div className={`font-black text-2xs ${
-                            tx.type === 'incoming' ? 'text-emerald-700' : 'text-rose-700'
-                          }`}>
-                            {tx.type === 'incoming' ? '+' : '-'} {Math.abs(tx.amount).toLocaleString('id-ID')}
-                          </div>
-                          <div className="text-3xs text-slate-400">
-                            Bal: {tx.runningBalance.toLocaleString('id-ID')}
-                          </div>
-                        </div>
-                        
-                        <button
-                          onClick={() => handleDeleteTransaction(tx.id)}
-                          className="p-1 text-rose-700 hover:bg-rose-50 rounded"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
+                  {filteredTransactions.length === 0 ? (
+                    <div className="py-8 text-center text-slate-400 text-3xs italic font-semibold">
+                      Belum ada transaksi. Tambah transaksi manual lewat tombol (+) di bawah.
                     </div>
-                  ))}
+                  ) : (
+                    filteredTransactions.map((tx) => (
+                      <div 
+                        key={tx.id}
+                        className="flex items-center justify-between p-2.5 rounded-lg bg-[#FFFDEB] border border-[#346739]/5 font-mono text-3xs"
+                      >
+                        <div className="space-y-0.5">
+                          <div className="font-extrabold text-[#091413] truncate max-w-[130px]">{tx.description}</div>
+                          <div className="text-slate-400 text-3xs">
+                            {new Date(tx.date).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit' })}
+                            {' • '}
+                            <span className={`capitalize font-bold ${
+                              tx.allocation === 'primer' ? 'text-sky-700' : tx.allocation === 'sekunder' ? 'text-purple-700' : 'text-emerald-700'
+                            }`}>{tx.allocation || 'Pendapatan'}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <div className={`font-black text-2xs ${
+                              tx.type === 'incoming' ? 'text-emerald-700' : 'text-rose-700'
+                            }`}>
+                              {tx.type === 'incoming' ? '+' : '-'} {Math.abs(tx.amount).toLocaleString('id-ID')}
+                            </div>
+                            <div className="text-3xs text-slate-400">
+                              Bal: {tx.runningBalance.toLocaleString('id-ID')}
+                            </div>
+                          </div>
+                          
+                          <button
+                            onClick={() => handleDeleteTransaction(tx.id)}
+                            className="p-1 text-rose-700 hover:bg-rose-50 rounded"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
 
               </div>
@@ -943,42 +980,340 @@ export default function HomePage() {
           {activeTab === 'account' && (
             <div className="space-y-4 animate-in fade-in duration-200">
               
-              <div className="organic-card rounded-xl p-4 bg-[#FBE8CE]/50 space-y-4 text-center">
-                
-                {/* User avatar */}
-                <div className="mx-auto h-16 w-16 rounded-full bg-[#346739] text-[#FFFDEB] font-bold text-xl flex items-center justify-center shadow-md">
-                  {currentUser?.name.split(' ').map(n => n[0]).join('')}
-                </div>
-
-                <div>
-                  <h4 className="font-extrabold text-[#091413] text-sm">{currentUser?.name}</h4>
-                  <span className="text-3xs text-slate-500 font-semibold">{currentUser?.email}</span>
-                </div>
-
-                <div className="border-t border-[#346739]/10 pt-3 text-left space-y-2.5">
-                  <div className="flex justify-between items-center text-3xs font-semibold">
-                    <span className="text-slate-500">Nomor Rekening Digital</span>
-                    <span className="text-[#091413] font-bold">NF-9087-1123-22</span>
+              {!isEditingProfile ? (
+                /* MAIN PROFILE CARD */
+                <div className="organic-card rounded-xl p-4 bg-[#FBE8CE]/50 space-y-4 text-center">
+                  
+                  {/* User avatar (with fallback) */}
+                  <div className="relative mx-auto h-16 w-16 rounded-full bg-[#346739] text-[#FFFDEB] font-bold text-xl flex items-center justify-center shadow-md overflow-hidden border border-[#346739]/10">
+                    {profileAvatar ? (
+                      <img src={profileAvatar} alt="Profile Photo" className="w-full h-full object-cover" />
+                    ) : (
+                      currentUser?.name.split(' ').map(n => n[0]).join('')
+                    )}
                   </div>
-                  <div className="flex justify-between items-center text-3xs font-semibold">
-                    <span className="text-slate-500">Tingkat Akun</span>
-                    <span className="text-[#346739] font-bold">Premium Sharia</span>
+
+                  <div>
+                    <h4 className="font-extrabold text-[#091413] text-sm">{currentUser?.name}</h4>
+                    <span className="text-[10px] text-slate-500 font-semibold flex items-center justify-center gap-1">
+                      {currentUser?.email}
+                      {isEmailVerified ? (
+                        <span className="text-[7px] text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded font-bold">Terverifikasi</span>
+                      ) : (
+                        <span className="text-[7px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-bold">Belum Diverifikasi</span>
+                      )}
+                    </span>
                   </div>
-                  <div className="flex justify-between items-center text-3xs font-semibold">
-                    <span className="text-slate-500">Database RLS Policy</span>
-                    <span className="text-emerald-700 font-bold">Aktif & Terenkripsi</span>
+
+                  {/* Personal Info fields */}
+                  <div className="border-t border-[#346739]/10 pt-3 text-left space-y-2">
+                    <span className="text-[8px] font-extrabold text-[#091413]/60 uppercase tracking-wider block">DATA DIRI / BIO</span>
+                    <div className="bg-[#FFFDEB]/60 p-2.5 rounded-lg space-y-2 border border-[#346739]/5 text-3xs font-semibold">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Nomor HP</span>
+                        <span className="text-[#091413] font-bold">{profilePhone || '-'}</span>
+                      </div>
+                      <div className="flex justify-between items-start">
+                        <span className="text-slate-500 shrink-0">Alamat</span>
+                        <span className="text-[#091413] font-bold text-right max-w-[150px] break-words">{profileAddress || '-'}</span>
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Account settings block */}
+                  <div className="border-t border-[#346739]/10 pt-3 text-left space-y-2.5">
+                    <div className="flex justify-between items-center text-3xs font-semibold">
+                      <span className="text-slate-500">Nomor Rekening Digital</span>
+                      <span className="text-[#091413] font-bold">1290013729625</span>
+                    </div>
+                    <div className="flex justify-between items-center text-3xs font-semibold">
+                      <span className="text-slate-500">Tingkat Akun</span>
+                      <span className="text-[#346739] font-bold">Premium Sharia</span>
+                    </div>
+                    <div className="flex justify-between items-center text-3xs font-semibold">
+                      <span className="text-slate-500">Database RLS Policy</span>
+                      <span className="text-emerald-700 font-bold">Aktif & Terenkripsi</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 mt-4">
+                    <button
+                      onClick={() => setIsEditingProfile(true)}
+                      className="py-2 bg-[#346739] hover:bg-[#284f2c] text-[#FFFDEB] rounded-lg text-xs font-bold transition-all shadow-md shadow-[#346739]/10 flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      Pengaturan Profil
+                    </button>
+                    <button
+                      onClick={handleLogout}
+                      className="py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-rose-500/10 flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <LogOut className="h-3.5 w-3.5" />
+                      Keluar
+                    </button>
+                  </div>
+
                 </div>
+              ) : (
+                /* EDIT PROFILE SETTINGS VIEW */
+                <div className="organic-card rounded-xl p-4 bg-[#FBE8CE]/50 space-y-4 animate-in slide-in-from-bottom duration-250 text-left">
+                  <div className="flex items-center justify-between border-b border-[#346739]/10 pb-2">
+                    <h4 className="font-extrabold text-[#091413] text-xs uppercase tracking-wider">PENGATURAN PROFIL</h4>
+                    <button 
+                      onClick={() => {
+                        setIsEditingProfile(false);
+                        // Reset forms
+                        if (currentUser) {
+                          setProfileName(currentUser.name);
+                          setProfileEmail(currentUser.email);
+                          const regUser = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
+                          if (regUser) {
+                            setProfilePassword(regUser.password);
+                          }
+                        }
+                      }}
+                      className="p-1 rounded-full hover:bg-slate-200 text-slate-500 cursor-pointer"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
 
-                <button
-                  onClick={handleLogout}
-                  className="w-full py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-rose-500/10 flex items-center justify-center gap-1 cursor-pointer"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                  Keluar dari Akun
-                </button>
+                  {/* Profile Photo Upload */}
+                  <div className="flex flex-col items-center gap-2 text-center">
+                    <div className="relative h-16 w-16 rounded-full bg-[#346739] text-[#FFFDEB] font-bold text-xl flex items-center justify-center shadow-md overflow-hidden border border-[#346739]/10">
+                      {profileAvatar ? (
+                        <img src={profileAvatar} alt="Avatar Preview" className="w-full h-full object-cover" />
+                      ) : (
+                        profileName.split(' ').map(n => n[0]).join('')
+                      )}
+                    </div>
+                    
+                    <label className="px-2.5 py-1 rounded bg-[#FFFDEB] border border-[#346739]/20 text-[9px] font-bold text-[#346739] hover:bg-[#346739]/5 transition-all cursor-pointer">
+                      Pilih Foto Profil
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setProfileAvatar(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
 
-              </div>
+                  {/* Edit Form Fields */}
+                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                    
+                    {/* Full Name */}
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-extrabold text-[#091413]/60 uppercase tracking-wider block">NAMA LENGKAP</label>
+                      <input 
+                        type="text"
+                        value={profileName}
+                        onChange={(e) => setProfileName(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-[#FFFDEB] border border-[#346739]/20 rounded-lg text-xs font-semibold text-[#091413] focus:outline-none focus:border-[#346739]"
+                        placeholder="Nama Lengkap Anda"
+                      />
+                    </div>
+
+                    {/* Phone Number */}
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-extrabold text-[#091413]/60 uppercase tracking-wider block">NOMOR HP</label>
+                      <input 
+                        type="text"
+                        value={profilePhone}
+                        onChange={(e) => setProfilePhone(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-[#FFFDEB] border border-[#346739]/20 rounded-lg text-xs font-semibold text-[#091413] focus:outline-none focus:border-[#346739]"
+                        placeholder="Contoh: 0812345678"
+                      />
+                    </div>
+
+                    {/* Full Address */}
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-extrabold text-[#091413]/60 uppercase tracking-wider block">ALAMAT LENGKAP</label>
+                      <textarea 
+                        value={profileAddress}
+                        onChange={(e) => setProfileAddress(e.target.value)}
+                        rows={2}
+                        className="w-full px-2.5 py-1.5 bg-[#FFFDEB] border border-[#346739]/20 rounded-lg text-xs font-semibold text-[#091413] focus:outline-none focus:border-[#346739]"
+                        placeholder="Alamat Lengkap Anda"
+                      />
+                    </div>
+
+                    {/* Email Verification Box */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[8px] font-extrabold text-[#091413]/60 uppercase tracking-wider block">ALAMAT EMAIL</label>
+                        {isEmailVerified ? (
+                          <span className="text-[7px] text-emerald-700 bg-emerald-100 px-1 rounded font-bold">Terverifikasi</span>
+                        ) : (
+                          <span className="text-[7px] text-amber-700 bg-amber-100 px-1 rounded font-bold">Belum Diverifikasi</span>
+                        )}
+                      </div>
+                      <input 
+                        type="email"
+                        value={profileEmail}
+                        onChange={(e) => {
+                          const newEmail = e.target.value;
+                          setProfileEmail(newEmail);
+                          if (currentUser && newEmail.toLowerCase() !== currentUser.email.toLowerCase()) {
+                            setIsEmailVerified(false);
+                          } else {
+                            setIsEmailVerified(true);
+                          }
+                        }}
+                        className="w-full px-2.5 py-1.5 bg-[#FFFDEB] border border-[#346739]/20 rounded-lg text-xs font-semibold text-[#091413] focus:outline-none focus:border-[#346739]"
+                        placeholder="email@alamat.com"
+                      />
+                      
+                      {/* Email Verification Action */}
+                      {!isEmailVerified && currentUser && (
+                        <div className="mt-2 bg-amber-50 border border-amber-200/60 p-2 rounded-lg space-y-2 text-3xs font-semibold text-[#091413]">
+                          <p className="text-amber-800 leading-normal">
+                            Email baru Anda perlu diverifikasi sebelum dapat disimpan.
+                          </p>
+                          
+                          {!isVerifyingEmail ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsVerifyingEmail(true);
+                                setVerificationSuccess('');
+                                setVerificationError('');
+                                alert("Simulasi kode verifikasi OTP '123456' telah dikirim ke email: " + profileEmail);
+                              }}
+                              className="w-full py-1 bg-[#346739] text-[#FFFDEB] rounded font-bold transition-all cursor-pointer"
+                            >
+                              Verifikasi Sekarang
+                            </button>
+                          ) : (
+                            <div className="space-y-1.5">
+                              <span className="text-slate-500 block">Masukkan Kode Verifikasi OTP (Ketik: 123456)</span>
+                              <div className="flex gap-1.5">
+                                <input 
+                                  type="text"
+                                  value={otpInput}
+                                  onChange={(e) => setOtpInput(e.target.value)}
+                                  placeholder="OTP Code"
+                                  className="flex-1 px-2 py-1 bg-white border border-slate-200 rounded text-3xs font-mono text-center font-bold focus:outline-none text-[#091413]"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (otpInput === '123456') {
+                                      setIsEmailVerified(true);
+                                      setIsVerifyingEmail(false);
+                                      setVerificationSuccess('Email berhasil diverifikasi!');
+                                      setVerificationError('');
+                                      setOtpInput('');
+                                    } else {
+                                      setVerificationError('Kode OTP salah! Coba ketik: 123456');
+                                    }
+                                  }}
+                                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold cursor-pointer"
+                                >
+                                  Verifikasi
+                                </button>
+                              </div>
+                              {verificationError && <span className="text-rose-600 block text-[7px] font-bold">{verificationError}</span>}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {verificationSuccess && (
+                        <div className="mt-2 p-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-[8px] font-bold text-center">
+                          {verificationSuccess}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Change Password */}
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-extrabold text-[#091413]/60 uppercase tracking-wider block">KATA SANDI BARU</label>
+                      <input 
+                        type="password"
+                        value={profilePassword}
+                        onChange={(e) => setProfilePassword(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-[#FFFDEB] border border-[#346739]/20 rounded-lg text-xs font-semibold text-[#091413] focus:outline-none focus:border-[#346739]"
+                        placeholder="••••••••"
+                      />
+                    </div>
+
+                  </div>
+
+                  {/* Actions buttons */}
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#346739]/10">
+                    <button
+                      onClick={() => {
+                        if (!profileName) {
+                          alert('Nama Lengkap tidak boleh kosong!');
+                          return;
+                        }
+                        if (!profileEmail) {
+                          alert('Email tidak boleh kosong!');
+                          return;
+                        }
+                        if (!isEmailVerified && currentUser && profileEmail.toLowerCase() !== currentUser.email.toLowerCase()) {
+                          alert('Mohon verifikasi email baru Anda terlebih dahulu!');
+                          return;
+                        }
+
+                        // Save updates
+                        if (currentUser) {
+                          // Update current user session
+                          setCurrentUser({
+                            name: profileName,
+                            email: profileEmail
+                          });
+
+                          // Update registeredUsers database
+                          setRegisteredUsers(prev => prev.map(u => {
+                            if (u.email.toLowerCase() === currentUser.email.toLowerCase()) {
+                              return {
+                                ...u,
+                                name: profileName,
+                                email: profileEmail,
+                                password: profilePassword
+                              };
+                            }
+                            return u;
+                          }));
+
+                          setIsEditingProfile(false);
+                          alert('Profil berhasil diperbarui!');
+                        }
+                      }}
+                      className="w-full py-2 bg-[#346739] hover:bg-[#284f2c] text-[#FFFDEB] rounded-lg text-xs font-black transition-all cursor-pointer shadow-sm text-center"
+                    >
+                      Simpan
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditingProfile(false);
+                        // Reset form fields to currentUser session values
+                        if (currentUser) {
+                          setProfileName(currentUser.name);
+                          setProfileEmail(currentUser.email);
+                          const regUser = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
+                          if (regUser) {
+                            setProfilePassword(regUser.password);
+                          }
+                        }
+                      }}
+                      className="w-full py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-black transition-all cursor-pointer text-center"
+                    >
+                      Batalkan
+                    </button>
+                  </div>
+
+                </div>
+              )}
 
             </div>
           )}
