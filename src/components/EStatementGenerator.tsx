@@ -4,10 +4,11 @@ import { Transaction } from '@/types/financial';
 
 interface EStatementGeneratorProps {
   transactions: Transaction[];
+  userName?: string;
   onDownload?: () => void;
 }
 
-export default function EStatementGenerator({ transactions }: EStatementGeneratorProps) {
+export default function EStatementGenerator({ transactions, userName = 'REFAT MUKMIN' }: EStatementGeneratorProps) {
   // 1. Sort all transactions chronologically (ascending)
   const sortedTx = useMemo(() => {
     return [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -112,7 +113,7 @@ export default function EStatementGenerator({ transactions }: EStatementGenerato
     
     const summaryHeader = [
       ['LAPORAN MUTASI REKENING DIGITAL - NaFi'],
-      ['Nama Pemilik / Name', 'REFAT MUKMIN'],
+      ['Nama Pemilik / Name', userName],
       ['Nomor Rekening / Account', '1290013729625'],
       ['Periode Mutasi / Period', periodText],
       ['Tanggal Cetak / Printed On', new Date().toLocaleDateString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit' })],
@@ -230,7 +231,7 @@ export default function EStatementGenerator({ transactions }: EStatementGenerato
               <tr>
                 <td className="font-extrabold text-[8px] py-0.5 w-[70px]">NAMA/NAME</td>
                 <td className="py-0.5 w-[5px]">:</td>
-                <td className="font-bold uppercase py-0.5 text-slate-900">REFAT MUKMIN</td>
+                <td className="font-bold uppercase py-0.5 text-slate-900">{userName}</td>
               </tr>
             </tbody>
           </table>

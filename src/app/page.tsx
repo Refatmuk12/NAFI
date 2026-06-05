@@ -855,7 +855,7 @@ export default function HomePage() {
               {/* E-Statement Downloader widget */}
               <EStatementGenerator 
                 transactions={transactions} 
-                onDownload={() => alert('PDF statement template generated.')} 
+                userName={currentUser?.name}
               />
 
               {/* Transactions list */}
