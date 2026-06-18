@@ -238,9 +238,53 @@ function parseReceiptText(text: string): { merchantName: string | null; totalAmo
     }
   }
 
-  const items = totalAmount ? [
-    { name: 'Belanja Struk Kamera', price: totalAmount, quantity: 1, total: totalAmount }
-  ] : [];
+  const items: Array<{ name: string; price: number; quantity: number; total: number }> = [];
+  
+  // Try to parse items from lines (typically middle lines between merchant name and total)
+  const itemLines = lines.filter(line => {
+    const l = line.toLowerCase();
+    return !l.includes('total') && !l.includes('jumlah') && !l.includes('bayar') && 
+           !l.includes('change') && !l.includes('kembali') && !l.includes('tax') && 
+           !l.includes('pajak') && !l.includes('disc') && !l.includes('promo') && 
+           !l.includes('cash') && !l.includes('tunai') && !l.includes('edc') && 
+           !l.includes('card') && !l.includes('kembalian') && !l.includes('subtotal') &&
+           !l.includes('telp') && !l.includes('address') && !l.includes('jalan') &&
+           !l.includes('tanggal') && !l.includes('date') && !l.includes('waktu') &&
+           !l.includes('time') && !l.includes('merchant') && l.length > 5;
+  });
+
+  for (const line of itemLines) {
+    const numbersMatch = line.match(/[\d.,]+/g);
+    if (numbersMatch && numbersMatch.length >= 1) {
+      const lastGroup = numbersMatch[numbersMatch.length - 1];
+      let cleanVal = lastGroup;
+      if (cleanVal.endsWith(',00') || cleanVal.endsWith('.00')) {
+        cleanVal = cleanVal.substring(0, cleanVal.length - 3);
+      }
+      const priceVal = parseInt(cleanVal.replace(/[^0-9]/g, ''), 10);
+      if (priceVal > 500 && priceVal < (totalAmount || 1000000)) {
+        const namePart = line.replace(lastGroup, '').replace(/[\d.,xX*]+/g, '').replace(/[^a-zA-Z\s]/g, '').trim();
+        if (namePart.length > 2) {
+          items.push({
+            name: namePart.toUpperCase(),
+            price: priceVal,
+            quantity: 1,
+            total: priceVal
+          });
+        }
+      }
+    }
+  }
+
+  // Fallback if no items extracted
+  if (items.length === 0 && totalAmount) {
+    items.push({
+      name: 'BELANJA STRUK',
+      price: totalAmount,
+      quantity: 1,
+      total: totalAmount
+    });
+  }
 
   return { merchantName, totalAmount, date, items };
 }
@@ -830,10 +874,30 @@ export default function HomePage() {
       setActiveStep('idle');
       
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
+        video: { 
+          facingMode: 'environment', 
+          width: { ideal: 1920, min: 1280 }, 
+          height: { ideal: 1080, min: 720 } 
+        }
       });
       setCameraStream(stream);
       setIsCameraActive(true);
+
+      // Try to apply continuous autofocus if supported by the browser/device
+      try {
+        const track = stream.getVideoTracks()[0];
+        if (track && track.getCapabilities) {
+          const capabilities = track.getCapabilities() as Record<string, unknown>;
+          const focusMode = capabilities.focusMode as string[] | undefined;
+          if (focusMode && focusMode.includes('continuous')) {
+            await track.applyConstraints({
+              advanced: [{ focusMode: 'continuous' } as unknown as MediaTrackConstraintSet]
+            });
+          }
+        }
+      } catch (focusErr) {
+        console.warn('Continuous autofocus not supported or failed to apply:', focusErr);
+      }
     } catch (err) {
       const error = err as Error;
       console.error(error);
@@ -1640,7 +1704,7 @@ export default function HomePage() {
                             autoPlay 
                             playsInline 
                             muted
-                            className="absolute inset-0 w-full h-full object-cover" 
+                            className="absolute inset-0 w-full h-full object-contain" 
                           />
                           {/* Viewfinder crosshairs */}
                           <div className="absolute inset-8 border border-white/35 rounded-lg pointer-events-none flex items-center justify-center">
@@ -1654,7 +1718,7 @@ export default function HomePage() {
                         <img 
                           src={capturedImage} 
                           alt="Captured Photo" 
-                          className="absolute inset-0 w-full h-full object-cover" 
+                          className="absolute inset-0 w-full h-full object-contain" 
                         />
                       )}
 
@@ -1730,7 +1794,7 @@ export default function HomePage() {
                         <img 
                           src={capturedImage} 
                           alt="Uploaded Receipt" 
-                          className="absolute inset-0 w-full h-full object-cover" 
+                          className="absolute inset-0 w-full h-full object-contain" 
                         />
                       )}
                     </>
