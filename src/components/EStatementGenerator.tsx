@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { FileText, Printer, User, CreditCard, Download, Calendar } from 'lucide-react';
+import { FileText, Printer, Download, Calendar } from 'lucide-react';
 import { Transaction } from '@/types/financial';
 
 interface EStatementGeneratorProps {
@@ -34,13 +34,21 @@ export default function EStatementGenerator({ transactions, userName = 'REFAT MU
   }, [sortedTx]);
 
   // 3. State for selected month
-  const [selectedMonth, setSelectedMonth] = useState<string>('');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    return availableMonths.length > 0 ? availableMonths[availableMonths.length - 1] : '';
+  });
 
   // Auto-set the latest month as default
   useEffect(() => {
     if (availableMonths.length > 0) {
-      // Set to latest month in list (which is the last one chronologically)
-      setSelectedMonth(availableMonths[availableMonths.length - 1]);
+      setTimeout(() => {
+        setSelectedMonth(prev => {
+          if (!prev || !availableMonths.includes(prev)) {
+            return availableMonths[availableMonths.length - 1];
+          }
+          return prev;
+        });
+      }, 0);
     }
   }, [availableMonths]);
 
@@ -97,7 +105,7 @@ export default function EStatementGenerator({ transactions, userName = 'REFAT MU
       
       const formatOptions: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric' };
       return `${firstDay.toLocaleDateString('id-ID', formatOptions)} - ${lastDay.toLocaleDateString('id-ID', formatOptions)}`;
-    } catch (e) {
+    } catch {
       return selectedMonth;
     }
   }, [selectedMonth, filteredTx]);

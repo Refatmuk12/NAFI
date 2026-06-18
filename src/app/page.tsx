@@ -168,7 +168,7 @@ function parseReceiptDate(text: string): Date | null {
   return null;
 }
 
-function parseReceiptText(text: string): { merchantName: string | null; totalAmount: number | null; date: Date | null; items: any[] } {
+function parseReceiptText(text: string): { merchantName: string | null; totalAmount: number | null; date: Date | null; items: Array<{ name: string; price: number; quantity: number; total: number }> } {
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   
   if (text.length < 15 || lines.length === 0) {
@@ -252,27 +252,78 @@ const getLocalDateString = (d: Date = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
+// Helper function to hash passwords client-side using browser-native SHA-256
+async function sha256(message: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 export default function HomePage() {
   // Authentication State
   const [authStatus, setAuthStatus] = useState<'login' | 'register' | 'authenticated'>('login');
-  const [registeredUsers, setRegisteredUsers] = useState([
-    { 
-      name: 'Refat Mukmin', 
-      email: 'refat@nafi.com', 
-      password: 'password123',
-      phone: '',
-      address: '',
-      avatar: null as string | null
+  const [registeredUsers, setRegisteredUsers] = useState<Array<{
+    name: string;
+    email: string;
+    passwordHash: string;
+    phone: string;
+    address: string;
+    avatar: string | null;
+  }>>(() => {
+    if (typeof window !== 'undefined') {
+      const savedUsers = localStorage.getItem('nafi_registered_users');
+      if (savedUsers) {
+        try {
+          return JSON.parse(savedUsers);
+        } catch (e) {
+          console.error('Error parsing registered users:', e);
+        }
+      }
     }
-  ]);
+    return [
+      { 
+        name: 'Refat Mukmin', 
+        email: 'refat@nafi.com', 
+        passwordHash: 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', // SHA-256 of 'password123'
+        phone: '',
+        address: '',
+        avatar: null as string | null
+      }
+    ];
+  });
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
   const [authError, setAuthError] = useState('');
-  const [currentUser, setCurrentUser] = useState<{ id?: string; name: string; email: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id?: string; name: string; email: string } | null>(() => {
+    if (typeof window !== 'undefined' && !isSupabaseConfigured) {
+      const savedUser = localStorage.getItem('nafi_current_user');
+      if (savedUser) {
+        try {
+          return JSON.parse(savedUser);
+        } catch (e) {
+          console.error('Error parsing current user session:', e);
+        }
+      }
+    }
+    return null;
+  });
 
   // Financial Data State
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>(() => {
+    if (typeof window !== 'undefined') {
+      const savedTxs = localStorage.getItem('nafi_transactions');
+      if (savedTxs) {
+        try {
+          return JSON.parse(savedTxs);
+        } catch (e) {
+          console.error('Error parsing transactions:', e);
+        }
+      }
+    }
+    return [];
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'all' | AllocationType>('all');
   
@@ -344,38 +395,11 @@ export default function HomePage() {
 
   // Load registered users, transactions, and session from Local Storage on mount
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const savedUsers = localStorage.getItem('nafi_registered_users');
-    if (savedUsers) {
-      try {
-        setRegisteredUsers(JSON.parse(savedUsers));
-      } catch (e) {
-        console.error('Error parsing registered users:', e);
-      }
-    }
-
-    const savedTxs = localStorage.getItem('nafi_transactions');
-    if (savedTxs) {
-      try {
-        setTransactions(JSON.parse(savedTxs));
-      } catch (e) {
-        console.error('Error parsing transactions:', e);
-      }
-    }
-
-    if (!isSupabaseConfigured) {
-      const savedUser = localStorage.getItem('nafi_current_user');
-      if (savedUser) {
-        try {
-          const parsedUser = JSON.parse(savedUser);
-          setCurrentUser(parsedUser);
-          setAuthStatus('authenticated');
-          setActiveTab('dashboard');
-        } catch (e) {
-          console.error('Error parsing current user session:', e);
-        }
-      }
+    if (!isSupabaseConfigured && currentUser) {
+      setTimeout(() => {
+        setAuthStatus('authenticated');
+        setActiveTab('dashboard');
+      }, 0);
     }
     
     isLoadedFromStorage.current = true;
@@ -470,9 +494,10 @@ export default function HomePage() {
 
       setProfileAvatar(publicUrl);
       alert('Foto profil berhasil diunggah!');
-    } catch (e: any) {
-      console.error('Error uploading avatar:', e);
-      alert('Gagal mengunggah foto profil: ' + e.message);
+    } catch (e) {
+      const err = e as Error;
+      console.error('Error uploading avatar:', err);
+      alert('Gagal mengunggah foto profil: ' + err.message);
     }
   };
 
@@ -533,7 +558,7 @@ export default function HomePage() {
             } else {
               setUserLocationName(`${latitude.toFixed(2)}, ${longitude.toFixed(2)}`);
             }
-          } catch (e) {
+          } catch {
             setUserLocationName(`${latitude.toFixed(2)}, ${longitude.toFixed(2)}`);
           }
         },
@@ -550,7 +575,9 @@ export default function HomePage() {
 
   // Request geolocation on mount
   useEffect(() => {
-    requestLocation();
+    setTimeout(() => {
+      requestLocation();
+    }, 0);
   }, []);
 
   // Drawer/Modal Mode for creation, edit, or scan review
@@ -564,90 +591,53 @@ export default function HomePage() {
     }
   }, [cameraStream, isCameraActive, scanMode]);
 
-  // Automatically start camera when navigating to scan tab, and stop it when leaving or logging out
-  useEffect(() => {
-    if (activeTab === 'scan' && authStatus === 'authenticated' && scanInputType === 'camera') {
-      startCamera();
-    } else {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-        setCameraStream(null);
-      }
-      setIsCameraActive(false);
-    }
-  }, [activeTab, authStatus, scanInputType]);
-
   // Sync profile details when currentUser changes
   useEffect(() => {
     if (currentUser) {
-      if (isSupabaseConfigured) {
-        setProfileEmail(currentUser.email);
-        return;
-      }
-      const regUser = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
-      if (regUser) {
-        setProfileName(regUser.name);
-        setProfileEmail(regUser.email);
-        setProfilePhone(regUser.phone || '');
-        setProfileAddress(regUser.address || '');
-        setProfileAvatar(regUser.avatar || null);
-        setProfilePassword(regUser.password);
-      }
-      setIsEmailVerified(true);
-      setIsVerifyingEmail(false);
-      setOtpInput('');
-      setVerificationError('');
-      setVerificationSuccess('');
+      setTimeout(() => {
+        if (isSupabaseConfigured) {
+          setProfileEmail(currentUser.email);
+          return;
+        }
+        const regUser = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
+        if (regUser) {
+          setProfileName(regUser.name);
+          setProfileEmail(regUser.email);
+          setProfilePhone(regUser.phone || '');
+          setProfileAddress(regUser.address || '');
+          setProfileAvatar(regUser.avatar || null);
+          setProfilePassword('');
+        }
+        setIsEmailVerified(true);
+        setIsVerifyingEmail(false);
+        setOtpInput('');
+        setVerificationError('');
+        setVerificationSuccess('');
+      }, 0);
     } else {
-      setProfileName('');
-      setProfileEmail('');
-      setProfilePhone('');
-      setProfileAddress('');
-      setProfileAvatar(null);
-      setProfilePassword('');
+      setTimeout(() => {
+        setProfileName('');
+        setProfileEmail('');
+        setProfilePhone('');
+        setProfileAddress('');
+        setProfileAvatar(null);
+        setProfilePassword('');
+      }, 0);
     }
-  }, [currentUser]);
+  }, [currentUser, registeredUsers]);
 
   // Sholat Reminder State
-  const [currentDateTime, setCurrentDateTime] = useState<Date | null>(null);
+  const [currentDateTime, setCurrentDateTime] = useState<Date | null>(() => {
+    if (typeof window !== 'undefined') {
+      return new Date();
+    }
+    return null;
+  });
   const [nextPrayerCountdown, setNextPrayerCountdown] = useState<string>('');
   const [nextPrayerName, setNextPrayerName] = useState<string>('');
 
-  // Recalculate running balance and verify chronological audit trail independently for each user
-  useEffect(() => {
-    // Group transactions by userEmail to compute balances independently
-    const userGroups: { [email: string]: Transaction[] } = {};
-    transactions.forEach(tx => {
-      const email = (tx.userEmail || '').toLowerCase();
-      if (!userGroups[email]) userGroups[email] = [];
-      userGroups[email].push(tx);
-    });
-
-    let hasChanged = false;
-    const updatedTransactions: Transaction[] = [];
-
-    Object.keys(userGroups).forEach(email => {
-      let balance = 0;
-      const sorted = [...userGroups[email]].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      const updated = sorted.map(tx => {
-        balance += tx.amount;
-        if (tx.runningBalance !== balance) {
-          hasChanged = true;
-        }
-        return { ...tx, runningBalance: balance };
-      });
-      updatedTransactions.push(...updated);
-    });
-
-    if (hasChanged || updatedTransactions.length !== transactions.length) {
-      setTransactions(updatedTransactions);
-    }
-  }, [transactions]);
-
   // Sholat Clock Timer & Countdown Effect
   useEffect(() => {
-    setCurrentDateTime(new Date());
-
     const timer = setInterval(() => {
       const now = new Date();
       setCurrentDateTime(now);
@@ -712,8 +702,9 @@ export default function HomePage() {
       return;
     }
 
+    const inputHash = await sha256(authPassword);
     const user = registeredUsers.find(
-      u => u.email.toLowerCase() === authEmail.toLowerCase() && u.password === authPassword
+      u => u.email.toLowerCase() === authEmail.toLowerCase() && u.passwordHash === inputHash
     );
 
     if (user) {
@@ -764,10 +755,11 @@ export default function HomePage() {
     }
 
     // Add new user credentials
+    const hashedPassword = await sha256(authPassword);
     const newUser = { 
       name: authName, 
       email: authEmail, 
-      password: authPassword,
+      passwordHash: hashedPassword,
       phone: '',
       address: '',
       avatar: null
@@ -798,7 +790,13 @@ export default function HomePage() {
   // Filter transactions by the current user's email to ensure complete data isolation
   const userTransactions = useMemo(() => {
     if (!currentUser) return [];
-    return transactions.filter(t => t.userEmail?.toLowerCase() === currentUser.email.toLowerCase());
+    const filtered = transactions.filter(t => t.userEmail?.toLowerCase() === currentUser.email.toLowerCase());
+    const sorted = [...filtered].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    let balance = 0;
+    return sorted.map(t => {
+      balance += t.amount;
+      return { ...t, runningBalance: balance };
+    });
   }, [transactions, currentUser]);
 
   // Financial Statistics
@@ -831,9 +829,10 @@ export default function HomePage() {
       });
       setCameraStream(stream);
       setIsCameraActive(true);
-    } catch (err: any) {
-      console.error(err);
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+    } catch (err) {
+      const error = err as Error;
+      console.error(error);
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         setCameraError('Izin kamera ditolak. Silakan berikan izin akses kamera di pengaturan browser Anda.');
       } else {
         setCameraError('Kamera tidak ditemukan atau tidak dapat diakses.');
@@ -866,6 +865,28 @@ export default function HomePage() {
       }
     }
   };
+
+  // Automatically start camera when navigating to scan tab, and stop it when leaving or logging out
+  useEffect(() => {
+    if (activeTab === 'scan' && authStatus === 'authenticated' && scanInputType === 'camera') {
+      setTimeout(() => {
+        startCamera();
+      }, 0);
+    } else {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        setTimeout(() => {
+          setCameraStream(null);
+          setIsCameraActive(false);
+        }, 0);
+      } else {
+        setTimeout(() => {
+          setIsCameraActive(false);
+        }, 0);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, authStatus, scanInputType]);
 
   // Multi-Agent OCR Scan Simulation
   const handleStartScan = async () => {
@@ -1541,7 +1562,7 @@ export default function HomePage() {
                   <span className="text-3xs font-black uppercase tracking-wider">GPT-4o Advice</span>
                 </div>
                 <p className="text-2xs text-[#091413] leading-relaxed font-semibold italic">
-                  "{currentAdvice}"
+                  &quot;{currentAdvice}&quot;
                 </p>
               </div>
 
@@ -2075,10 +2096,7 @@ export default function HomePage() {
                         if (currentUser) {
                           setProfileName(currentUser.name);
                           setProfileEmail(currentUser.email);
-                          const regUser = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
-                          if (regUser) {
-                            setProfilePassword(regUser.password);
-                          }
+                          setProfilePassword('');
                         }
                       }}
                       className="p-1 rounded-full hover:bg-slate-200 text-slate-500 cursor-pointer"
@@ -2344,6 +2362,7 @@ export default function HomePage() {
                               localStorage.setItem('nafi_current_user', JSON.stringify(updatedUserSession));
                             }
 
+                            const newHash = profilePassword ? await sha256(profilePassword) : null;
                             // Update registeredUsers database
                             setRegisteredUsers(prev => prev.map(u => {
                               if (u.email.toLowerCase() === currentUser.email.toLowerCase()) {
@@ -2351,7 +2370,7 @@ export default function HomePage() {
                                   ...u,
                                   name: profileName,
                                   email: profileEmail,
-                                  password: profilePassword,
+                                  ...(newHash ? { passwordHash: newHash } : {}),
                                   phone: profilePhone,
                                   address: profileAddress,
                                   avatar: profileAvatar
@@ -2377,10 +2396,7 @@ export default function HomePage() {
                         if (currentUser) {
                           setProfileName(currentUser.name);
                           setProfileEmail(currentUser.email);
-                          const regUser = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
-                          if (regUser) {
-                            setProfilePassword(regUser.password);
-                          }
+                          setProfilePassword('');
                         }
                       }}
                       className="w-full py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-black transition-all cursor-pointer text-center"

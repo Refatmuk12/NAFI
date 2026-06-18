@@ -3,7 +3,7 @@ import { ReceiptScanResult, Transaction, AllocationType } from '@/types/financia
 export interface AgentLogEvent {
   step: 'gemini' | 'claude' | 'gpt' | 'completed';
   logs: string[];
-  partialData?: any;
+  partialData?: unknown;
 }
 
 export function simulateMultiAgentPipeline(

@@ -7,7 +7,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const isValidUrl = (url: string) => {
   try {
     return url.startsWith('http://') || url.startsWith('https://');
-  } catch (e) {
+  } catch {
     return false;
   }
 };
